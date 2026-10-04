@@ -41,6 +41,23 @@
 
 <!-- Three or four sentences: what a user asks for, and what they get back. -->
 
+FitFindr is a little shopping agent for second-hand clothes. You ask for
+something in plain language, like "vintage graphic tee under $30" and it
+searches the thrift listings for items that match your words, your size, and
+your price limit. It then picks the best match, suggests an outfit using clothes already in your wardrobe, and writes a short caption (a "fit card") you could post about the find. If nothing matches, it stops early and tells you what to change instead of making something up.
+
+<!-- Scratch notes for myself (Milestone 1):
+
+A listing has 11 fields: id, title, description, category, style_tags
+(list), size, condition, price (float), colors (list), brand (str OR None),
+platform.
+
+- size is messy: "W30 L30", "S/M", "M/L", "XL (oversized)", "US 9",
+"One Size". A plain substring test is a trap — "s" in "us 9" is True,
+"l" in "xl" is True. Be careful in search_listings.
+- brand is None for a lot of listings. Don't assume it's always there.
+- 40 listings, 5 categories (tops, bottoms, outerwear, shoes, accessories), 3 platforms (depop, thredUp, poshmark).
+- Empty wardrobe is {"items": []} — suggest_outfit has to survive that. -->
 
 
 ---
