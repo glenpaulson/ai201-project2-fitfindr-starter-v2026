@@ -25,9 +25,13 @@ Given a query that matches at least one listing, the agent completes all three
 tool calls and returns a fit card — in at least 4 of 5 tries.
 
 **Why this target:**
-<!-- Why 4 of 5 and not 5 of 5? Something about your search, probably —
-     "my search is a plain keyword match and some phrasings will miss" is a
-     real answer. -->
+My search is a plain keyword overlap match. It scores a listing by how many of
+the user's words show up in the title, description, and style tags. That works
+when the user names words the listing actually uses, but a shopper can describe
+the same item in words the data does not contain (saying "tee" for a listing
+titled "baby tee", or a synonym the seller never wrote), and then a real match
+scores zero and gets dropped. 4 of 5 leaves room for that phrasing gap. It is
+my search being literal, not the loop failing.
 
 ---
 
@@ -37,64 +41,64 @@ Given a query that matches no listings, the agent stops before calling
 `suggest_outfit` and returns a message naming what to change — 5 of 5 tries.
 
 **Why this target:**
-<!-- Why is 5 of 5 reasonable here when criterion 1 isn't? What's different
-     about this path? -->
+This path never calls the model and never depends on wording. search_listings is
+plain Python, so an impossible query returns an empty list every single time, and
+the loop's branch is one `if` on that empty list. There is no randomness and no
+second service that could behave differently between tries, so if it stops once
+it stops every time. That is why 5 of 5 is fair here when criterion 1 is not.
 
 ---
 
-## 3. Something about state
+## 3. The item found is the item that gets styled
 
-<!-- YOU WRITE THIS ONE.
-
-     How would you know that the item your search found is the same item the
-     next tool received? Name something countable or observable.
-
-     This is the criterion people find hardest, because state failure doesn't
-     look like state failure — it looks like a tool problem. Something that
-     compares session["selected_item"] against what actually reached
-     suggest_outfit is the shape you're after. -->
-
-
+In 5 of 5 runs, the item id stored in `session["selected_item"]["id"]` is the
+same id that reaches `suggest_outfit`, which is the `new_item` it is called with.
+I check it by comparing `session["selected_item"]["id"]` against the item
+recorded going into the suggest_outfit step. If the two ids ever differ, the
+outfit was built for a different item than the one search picked.
 
 **Why this target:**
-
-
-
----
-
-## 4. Something about the fit card
-
-<!-- YOU WRITE THIS ONE.
-
-     The fit card calls a model, so the same input can produce different words
-     each time. That's not a bug — it's the nature of the tool. So what would
-     make it acceptable?
-
-     Think about what you'd actually be unhappy to see. A caption that never
-     mentions the price? Two different items producing the same opening
-     sentence? A card longer than a caption anyone would post? Any of those can
-     be turned into a number. -->
-
-
-
-**Why this target:**
+The selected item travels from search to suggest_outfit through one field in the
+session dict, set once by a plain assignment. Nothing random touches it, so the
+id that goes in should always be the id that comes back out. I set 5 of 5 because
+a single mismatch means the session is being overwritten or the wrong index is
+being read, and that is a real bug I want to catch, not acceptable noise.
 
 
 
 ---
 
-## 5. Your choice
+## 4. The fit card names the price
 
-<!-- YOU WRITE THIS ONE TOO.
-
-     Pick something you actually care about getting right. Speed, the empty
-     wardrobe path, what happens when the model can't be reached, whether the
-     search respects a price ceiling — anything, as long as it names a number
-     or an observable outcome. -->
-
-
+In at least 4 of 5 runs, the fit card contains the item's price, meaning the
+number from `new_item["price"]` appears somewhere in the caption. A caption that
+never mentions what the item costs is not doing its job, since the price is half
+the reason anyone reposts a thrift find.
 
 **Why this target:**
+The fit card is written by the model at temperature 0.9, so the exact words
+change every run and I cannot pin it to one fixed sentence. What I can ask for is
+that the price always lands in the caption. I set 4 of 5 rather than 5 of 5
+because the model sometimes rounds the number or writes around it ("just under
+twenty"), and that is model variance I can live with, not a broken tool.
+
+
+
+---
+
+## 5. The price ceiling is never crossed
+
+When the user gives a max price, every listing `search_listings` returns has a
+`price` less than or equal to that ceiling, in 5 of 5 runs. For the query
+"vintage graphic tee under $30", no returned listing is above $30.
+
+**Why this target:**
+This is a pure filter inside search_listings with no model involved, so it is
+deterministic: the same query gives the same results every time. A ceiling that
+leaks even once is a plain logic bug, not variance, so there is no reason to
+accept anything below 5 of 5. I picked this one because it is the thing a shopper
+cares about most and the easiest to get silently wrong, for example when a
+PowerShell double quote eats the `$30` before my code ever sees it.
 
 
 
