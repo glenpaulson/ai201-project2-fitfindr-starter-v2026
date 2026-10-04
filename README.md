@@ -53,11 +53,11 @@ A listing has 11 fields: id, title, description, category, style_tags
 platform.
 
 - size is messy: "W30 L30", "S/M", "M/L", "XL (oversized)", "US 9",
-"One Size". A plain substring test is a trap — "s" in "us 9" is True,
+"One Size". A plain substring test is a trap. "s" in "us 9" is True,
 "l" in "xl" is True. Be careful in search_listings.
 - brand is None for a lot of listings. Don't assume it's always there.
 - 40 listings, 5 categories (tops, bottoms, outerwear, shoes, accessories), 3 platforms (depop, thredUp, poshmark).
-- Empty wardrobe is {"items": []} — suggest_outfit has to survive that. -->
+- Empty wardrobe is {"items": []}, so suggest_outfit has to survive that. -->
 
 
 ---
@@ -76,24 +76,51 @@ platform.
 
 ### `search_listings`
 
-- **What it does:**
-- **Inputs:** <!-- name and type each: `max_price` (float), not "a price" -->
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Looks through all the thrift listings and returns the ones
+  that match the user's keywords, and, when they are given, their size and price
+  limit. It scores each listing by how many of the description words overlap with
+  the listing's title, description, and style tags, then sorts best match first.
+- **Inputs:** `description` (str, the keywords), `size` (str or None, which
+  skips size filtering when None), `max_price` (float or None, an inclusive
+  ceiling, skipped when None).
+- **Returns:** A list of listing dicts, best match first (at most
+  `SEARCH_RESULT_LIMIT`, which is 10). Each dict has the full listing fields:
+  `id, title, description, category, style_tags, size, condition, price, colors,
+  brand, platform`.
+- **When it has nothing:** Returns an empty list `[]`, not `None` and not an
+  exception. The loop checks this to decide whether to stop.
+
+<!-- Size matching rule I'm committing to (so it isn't a substring trap): compare
+     whole tokens, ignoring case. I split the listing's size on spaces and
+     slashes, so "S/M" becomes ["s","m"] and "US 8" becomes ["us","8"], then
+     keep the listing only if the requested size is one of those tokens. That
+     way "M" matches "S/M" and "M/L" but NOT "XL", and "s" does not match
+     "US 9". -->
 
 ### `suggest_outfit`
 
-- **What it does:**
-- **Inputs:**
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Takes the item the user is considering and their wardrobe,
+  and asks the model for one or two outfit ideas that go with the item.
+- **Inputs:** `new_item` (dict, one listing), `wardrobe` (dict with an `items`
+  key holding a list of wardrobe items; the list may be empty).
+- **Returns:** A string of outfit suggestions that is never empty. When the
+  wardrobe has items, it names specific pieces the user already owns; when the
+  wardrobe is empty, it gives general styling advice for the item instead.
+- **When it has nothing:** If `wardrobe["items"]` is empty, it still returns a
+  string that is not empty (general styling advice); it does not return `""` or
+  raise.
 
 ### `create_fit_card`
 
-- **What it does:**
-- **Inputs:**
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Writes a short caption worth posting about the find, based on
+  the item and the outfit suggestion.
+- **Inputs:** `outfit` (str, the suggestion from `suggest_outfit`), `new_item`
+  (dict, the listing).
+- **Returns:** A caption of two to four sentences that mentions the item and its
+  price and platform once each. Because the model runs with temperature,
+  different items give different captions.
+- **When it has nothing:** If `outfit` is empty or only whitespace, it returns a
+  short descriptive message instead of raising.
 
 ---
 
