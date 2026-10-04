@@ -13,6 +13,8 @@ Build and test your three tools in `tools.py` first. Then come here.
     python agent.py          runs both example paths below
 """
 
+import re
+
 import config
 import trace
 from tools import search_listings, suggest_outfit, create_fit_card
@@ -45,6 +47,46 @@ def new_session(query: str, wardrobe: dict) -> dict:
         "fit_card": None,            # what create_fit_card returned
         "error": None,               # set when the run ended early
     }
+
+
+# ── query parsing ─────────────────────────────────────────────────────────────
+
+def parse_query(query: str) -> dict:
+    """
+    Pull a description, a size, and a max_price out of the user's query.
+
+    I use simple string handling with a couple of small regexes (not the model),
+    so this is fast and costs no API calls.
+
+      - max_price: a number after "under", or any "$NN" in the text.
+      - size: the word after "size" (so "size M" or "size 8").
+      - description: whatever is left once the price and size phrases are removed.
+    """
+    text = query.strip()
+    parsed = {"description": text, "size": None, "max_price": None}
+
+    # price: "under $30", "under 30", or just "$30"
+    price_match = re.search(r"under\s+\$?(\d+(?:\.\d+)?)", text, re.IGNORECASE)
+    if price_match is None:
+        price_match = re.search(r"\$\s?(\d+(?:\.\d+)?)", text)
+    if price_match is not None:
+        parsed["max_price"] = float(price_match.group(1))
+
+    # size: the token right after the word "size"
+    size_match = re.search(r"size\s+([a-zA-Z0-9/]+)", text, re.IGNORECASE)
+    if size_match is not None:
+        parsed["size"] = size_match.group(1)
+
+    # description: the query with the price and size phrases taken out, so their
+    # numbers don't get treated as keywords
+    description = text
+    if price_match is not None:
+        description = description.replace(price_match.group(0), " ")
+    if size_match is not None:
+        description = description.replace(size_match.group(0), " ")
+    parsed["description"] = description.strip()
+
+    return parsed
 
 
 # ── planning loop ─────────────────────────────────────────────────────────────
@@ -107,9 +149,66 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     """
     session = new_session(query, wardrobe)
 
-    # TODO: delete these two lines and build the loop.
-    session["error"] = "The planning loop isn't built yet — see the TODO in agent.py."
-    return session
+    # The loop walks through one stage at a time. Each time round it checks the
+    # iteration count (the stop condition), then does the current stage and
+    # decides the next one. The important part is the "search" stage: it looks
+    # at what search_listings returned before deciding whether to keep going.
+    stage = "parse"
+    count = 0
+
+    while True:
+        count += 1
+        trace.check_iterations(count)  # raises if we somehow loop too many times
+
+        if stage == "parse":
+            # Pull description / size / max_price out of the query.
+            session["parsed"] = parse_query(query)
+            stage = "search"
+
+        elif stage == "search":
+            # Run the only tool that doesn't call the model.
+            parsed = session["parsed"]
+            results = search_listings(
+                parsed["description"],
+                size=parsed["size"],
+                max_price=parsed["max_price"],
+            )
+            session["search_results"] = results
+
+            # ── THE BRANCH ──
+            # If nothing matched, stop here. Don't call suggest_outfit with
+            # nothing, and tell the user what they could change.
+            if not results:
+                session["error"] = (
+                    f"I couldn't find anything for \"{query}\". Try removing the "
+                    f"price limit, using a different size, or simpler keywords."
+                )
+                return session
+
+            # Otherwise carry on to pick an item.
+            stage = "select"
+
+        elif stage == "select":
+            # The first result is the best-scoring one, so take that.
+            session["selected_item"] = session["search_results"][0]
+            stage = "outfit"
+
+        elif stage == "outfit":
+            # Suggest an outfit for the item we selected, using the wardrobe.
+            session["outfit_suggestion"] = suggest_outfit(
+                session["selected_item"], wardrobe
+            )
+            stage = "fit_card"
+
+        elif stage == "fit_card":
+            # Write the caption from the outfit and the item.
+            session["fit_card"] = create_fit_card(
+                session["outfit_suggestion"], session["selected_item"]
+            )
+            stage = "done"
+
+        else:  # stage == "done"
+            return session
 
 
 # ── running it directly ───────────────────────────────────────────────────────
