@@ -137,13 +137,24 @@ platform.
      The grader checks your code against what you claim here, so the file and
      function have to be real. -->
 
-**Branch rule:**
+**Branch rule:** If `search_listings` returns an empty list, I put a message in
+`session["error"]` that names what the user could change and return the session
+right away, without calling `suggest_outfit`. Otherwise I take the first result
+(the best scoring one) as `session["selected_item"]` and carry on to
+`suggest_outfit` and then `create_fit_card`.
 
 **Where it lives:** `agent.py::run_agent`
 
-**How the query is parsed:** <!-- regex, string splitting, or asking the model — say which -->
+**How the query is parsed:** String handling with two small regexes, not the
+model. A helper called `parse_query` in `agent.py` pulls out `max_price` (a number
+after "under", or any "$NN"), `size` (the token after the word "size"), and uses
+whatever text is left over as the `description`.
 
-**What moves through the session:** <!-- which fields, in what order -->
+**What moves through the session:** The fields fill in this order: `query` (what
+the user typed), then `parsed` (description, size, max_price), then
+`search_results`, then `selected_item`, then `outfit_suggestion`, then
+`fit_card`. If the search comes back empty, `error` is set instead and every
+field after `search_results` stays `None`.
 
 ---
 
@@ -157,25 +168,47 @@ platform.
 **One full query**
 
 ```
-$ python app.py ask '...'
+$ python app.py ask "vintage graphic tee under $30"
 
+  Found:    Y2K Baby Tee — Butterfly Print — $18.0 on depop
+
+  Outfit:   Pair your new Y2K baby tee with the baggy straight-leg jeans and
+            chunky white sneakers for a cute, casual throwback look. Throw on the
+            black cropped zip hoodie if you need an extra layer!
+
+  Fit card: Obsessed with this Y2K butterfly tee I just scored! It's yours on
+            Depop for just $18.00. Pair it with baggy jeans and chunky sneakers
+            for the ultimate throwback fit! ✨🦋
+
+2 model calls this session, 326 prompt + 86 output tokens
 ```
 
 **The three tools, tested one at a time**
 
 ```
-$ python -c "from tools import search_listings; print(search_listings('graphic tee', max_price=30))"
-
+$ python -c "from tools import search_listings; r=search_listings('graphic tee', max_price=30); print(len(r), 'results, best first:'); [print(' ', x['id'], '|', x['title'], '| $'+str(x['price']), '|', x['size']) for x in r]"
+7 results, best first:
+  lst_002 | Y2K Baby Tee — Butterfly Print | $18.0 | S/M
+  lst_006 | Graphic Tee — 2003 Tour Bootleg Style | $24.0 | L
+  lst_017 | Mesh Long-Sleeve Top — Black | $15.0 | S/M
+  lst_033 | Vintage Band Tee — Faded Grey | $19.0 | L
+  lst_011 | Low-Rise Cargo Pants — Khaki | $27.0 | W29
+  lst_012 | Oversized Crewneck Sweatshirt — Vintage Navy | $20.0 | XL (fits oversized)
+  lst_015 | Vintage Graphic Hoodie — Faded Black | $26.0 | L
 ```
 
 ```
-$ python -c "from tools import suggest_outfit; ..."
+$ python -c "from tools import suggest_outfit; from utils.data_loader import get_example_wardrobe, load_listings; print(suggest_outfit(load_listings()[0], get_example_wardrobe()))"
+Hey there! Those vintage Levi's 501 jeans are such a great find.
 
+Try pairing your new medium wash jeans with the white ribbed tank top, black cropped zip hoodie, and chunky white sneakers for an easy, casual streetwear look.
+
+For a cooler day, throw the vintage black denim jacket over the grey crewneck sweatshirt, tuck the crewneck into the jeans with your brown leather belt, and finish it off with your black combat boots.
 ```
 
 ```
-$ python -c "from tools import create_fit_card; ..."
-
+$ python -c "from tools import create_fit_card; from utils.data_loader import load_listings; print(create_fit_card('jeans and white sneakers', load_listings()[0]))"
+Score! Just hunted down these vintage Levi's 501 jeans in the absolute best medium wash. They can be yours on Depop right now for just $38.00! I'm styling mine with a crisp pair of white sneakers for the ultimate effortless weekend fit. Grab them before I change my mind and keep them!
 ```
 
 ---
@@ -191,15 +224,28 @@ $ python -c "from tools import create_fit_card; ..."
 
 **Moment 1**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* A way to filter listings by size that would not fall for
+  the substring trap the starter warned about, where "s" matches "us 9" and "l"
+  matches "xl".
+- *What came back:* The idea to split each listing's size on spaces and slashes
+  into whole tokens, so "S/M" becomes ["s", "m"] and "US 8" becomes ["us", "8"],
+  then keep a listing only when the requested size equals one of those tokens.
+- *What I changed:* I put that rule into `search_listings` and tested it. Asking
+  for size "M" returned only the S/M tops, with no XL items and no shoes, so I
+  kept it and wrote the rule into my Tool Inventory.
 
 **Moment 2**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* Help turning a plain query like "vintage graphic tee under
+  $30" into a separate description, size, and price.
+- *What came back:* A small regex approach for the price and size, plus the
+  suggestion to strip the price and size phrases out of the text before using the
+  rest as the description, so their numbers do not get treated as keywords.
+- *What I changed:* I used that for `parse_query`, but while testing I noticed the
+  keyword match still matches substrings inside other words (so "tee" can match a
+  word that only contains "tee"). The real matches still sort to the top, so I
+  left it and used that limitation as the reason my criterion 1 target is 4 of 5
+  instead of 5 of 5.
 
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 
