@@ -343,6 +343,83 @@ behaved differently afterwards. If the rewire didn't work, say exactly where it
 broke — the error text and the last thing that worked. That earns the point in
 full. -->
 
+I moved `search_listings` onto MCP. It was the easy one to pick because it is
+the only tool that doesn't call the model, so nothing is slow and the same query
+gives the same answer every time while I was figuring out the shape.
+
+**What changed in my code, in two places.**
+
+1. `mcp_server.py`: I uncommented the `@mcp.tool()` block and registered
+   `search_listings` with the same three inputs as my Tool Inventory
+   (`description: str`, `size: str | None`, `max_price: float | None`). The body
+   just calls `_search_listings_impl`, which is the real function in `tools.py`
+   under an alias. The part that took the longest was the description, because
+   it has to make sense to someone who can't see my code. I spelled out that
+   `max_price` is in whole dollars and inclusive, that `size` is matched as a
+   whole token so "M" matches "S/M" but not "XL", and that nothing matching gives
+   back `[]` and not `null`.
+
+2. `agent.py`: in `run_agent()`, the search stage used to be a direct call:
+
+   ```python
+   results = search_listings(parsed["description"], size=..., max_price=...)
+   ```
+
+   and it is now:
+
+   ```python
+   results = call_tool("search_listings", {
+       "description": parsed["description"],
+       "size": parsed["size"],
+       "max_price": parsed["max_price"],
+   })
+   ```
+
+   I also dropped `search_listings` out of the `from tools import ...` line, so
+   the agent genuinely cannot reach it directly any more. `suggest_outfit` and
+   `create_fit_card` stayed as direct calls.
+
+**Did anything behave differently? No, and I checked instead of assuming.**
+
+```
+$ python mcp_client.py
+Asking mcp_server.py what it offers...
+
+  search_listings
+    Search a fixed catalogue of 40 secondhand clothing listings and return the
+    ones that match, best match first.
+    [...full description...]
+    - description: string
+    - size: string  (optional)
+    - max_price: number  (optional)
+```
+
+Then I ran the same arguments both ways and compared the lists:
+
+```
+$ python -c "from tools import search_listings; from mcp_client import call_tool; args={'description':'looking for a vintage graphic tee','size':None,'max_price':30.0}; d=search_listings(args['description'],args['size'],args['max_price']); m=call_tool('search_listings',args); print('direct:',len(d),'items   mcp:',len(m),'items'); print('same?', d==m)"
+direct: 10 items   mcp: 10 items
+same? True
+```
+
+`d == m` is True, so the dicts came back identical field for field, not just the
+same length. I checked the empty case separately too, because that is what my
+branch in criterion 2 reads:
+
+```
+$ python -c "from mcp_client import call_tool; print(call_tool('search_listings', {'description':'designer ballgown','size':'XXS','max_price':5.0}))"
+[]
+```
+
+That mattered more than it looks. MCP sends results back as text containing
+JSON, so I half expected the empty list to arrive as `None` or as the string
+`"[]"`, which would have made `if not results:` behave by accident rather than
+on purpose. It comes back as a real empty list, so the branch still works for the
+right reason.
+
+The one thing that *is* different is speed. `mcp_client.call_tool` starts the
+server, asks, and shuts it down again on every single call, so a run that used to
+be instant now has a visible pause at the search step.
 
 
 ---

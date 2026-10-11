@@ -67,23 +67,41 @@ from tools import search_listings as _search_listings_impl  # noqa: F401 — you
 mcp = FastMCP("fitfindr", log_level="WARNING")
 
 
-# ── TODO: uncomment and fill this in ──────────────────────────────────────────
-#
-# @mcp.tool()
-# def search_listings(
-#     description: str,
-#     size: str | None = None,
-#     max_price: float | None = None,
-# ) -> list[dict]:
-#     """
-#     <-- YOUR DESCRIPTION GOES HERE.
-#
-#         One or two sentences. What does this tool do, what does it need, and
-#         what does it give back when it finds nothing? Written for a reader
-#         who cannot see the code.
-#     """
-#     return _search_listings_impl(description, size, max_price)
-#
+# ── my one registered tool ────────────────────────────────────────────────────
+
+@mcp.tool()
+def search_listings(
+    description: str,
+    size: str | None = None,
+    max_price: float | None = None,
+) -> list[dict]:
+    """
+    Search a fixed catalogue of 40 secondhand clothing listings and return the
+    ones that match, best match first.
+
+    `description` is free text keywords (for example "vintage graphic tee").
+    Words shorter than 3 letters are ignored, and a listing is kept only if at
+    least one keyword appears in its title, description, or style tags.
+
+    `size` is an optional size label such as "M", "L", "W29", or "US 9". It is
+    matched as a whole token and ignores case, so "M" matches a listing sized
+    "S/M" but does not match "XL". Leave it out to skip size filtering.
+
+    `max_price` is an optional price ceiling in whole US dollars, and it is
+    inclusive, so max_price=30 keeps an item priced exactly 30.00. Leave it out
+    to skip price filtering.
+
+    Returns a list of at most 10 listing objects. Each one has the fields: id
+    (str), title (str), description (str), category (str), style_tags (list of
+    str), size (str), condition (str), price (number, US dollars), colors (list
+    of str), brand (str or null, and it is null for most listings), and platform
+    (str).
+
+    When nothing matches it returns an empty list []. It never returns null and
+    it never raises for a query that simply has no matches.
+    """
+    return _search_listings_impl(description, size, max_price)
+
 # ──────────────────────────────────────────────────────────────────────────────
 #
 # Two notes on the block above.
