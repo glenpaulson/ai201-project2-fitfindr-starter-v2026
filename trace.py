@@ -30,12 +30,19 @@ import config
 _lines: list[str] = []
 _step_number = 0
 
+# UNIT 4: I put the trace calls straight into run_agent(), so they run on every
+# single query. Without a switch, a plain `python app.py ask '...'` would dump
+# all five steps on top of the answer. app.py only calls start_trace() when you
+# pass --trace, so I let that turn the printing on and leave it off otherwise.
+_enabled = False
+
 
 def start_trace() -> None:
-    """Clear the trace. Call this at the start of each run."""
-    global _step_number
+    """Clear the trace and switch it on. Call this at the start of each run."""
+    global _step_number, _enabled
     _lines.clear()
     _step_number = 0
+    _enabled = True
 
 
 def step(name: str, inputs=None, returned=None, note: str = "") -> None:
@@ -50,6 +57,11 @@ def step(name: str, inputs=None, returned=None, note: str = "") -> None:
         note:     an optional word on why, e.g. "branch: empty, stopping".
     """
     global _step_number
+
+    # Nothing was switched on, so this run isn't being traced. Do nothing.
+    if not _enabled:
+        return
+
     _step_number += 1
 
     line = f"[{_step_number}] {name}"

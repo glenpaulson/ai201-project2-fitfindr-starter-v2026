@@ -164,6 +164,15 @@ def run_agent(query: str, wardrobe: dict) -> dict:
         if stage == "parse":
             # Pull description / size / max_price out of the query.
             session["parsed"] = parse_query(query)
+            parsed = session["parsed"]
+            trace.step(
+                "parse_query",
+                inputs=query,
+                returned=(
+                    f"description={parsed['description']!r}, "
+                    f"size={parsed['size']!r}, max_price={parsed['max_price']!r}"
+                ),
+            )
             stage = "search"
 
         elif stage == "search":
@@ -186,31 +195,108 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                     f"I couldn't find anything for \"{query}\". Try removing the "
                     f"price limit, using a different size, or simpler keywords."
                 )
+                trace.step(
+                    "search_listings (via MCP)",
+                    inputs=(
+                        f"description={parsed['description']!r}, "
+                        f"size={parsed['size']!r}, "
+                        f"max_price={parsed['max_price']!r}"
+                    ),
+                    returned=results,
+                    note="branch: empty list, stopping before suggest_outfit",
+                )
                 return session
 
             # Otherwise carry on to pick an item.
+            trace.step(
+                "search_listings (via MCP)",
+                inputs=(
+                    f"description={parsed['description']!r}, "
+                    f"size={parsed['size']!r}, "
+                    f"max_price={parsed['max_price']!r}"
+                ),
+                returned=results,
+                note=f"branch: {len(results)} results, carrying on",
+            )
             stage = "select"
 
         elif stage == "select":
             # The first result is the best-scoring one, so take that.
             session["selected_item"] = session["search_results"][0]
+            trace.step(
+                "select_item",
+                inputs=f"{len(session['search_results'])} results, taking index 0",
+                returned=session["selected_item"],
+                note=f"selected_item id is {session['selected_item']['id']}",
+            )
             stage = "outfit"
 
         elif stage == "outfit":
             # Suggest an outfit for the item we selected, using the wardrobe.
-            session["outfit_suggestion"] = suggest_outfit(
-                session["selected_item"], wardrobe
+            # This one calls the model, so it can fail with ModelUnavailable.
+            item = session["selected_item"]
+            owned = len(wardrobe.get("items", []))
+            try:
+                session["outfit_suggestion"] = suggest_outfit(item, wardrobe)
+            except ModelUnavailable as exc:
+                session["error"] = (
+                    f"I found {item['title']} for ${item['price']} on "
+                    f"{item['platform']}, but I couldn't reach the model to style "
+                    f"it, so there is no outfit or fit card. The model said: "
+                    f"{exc} Once that is sorted, run the same query again."
+                )
+                trace.step(
+                    "suggest_outfit",
+                    inputs=f"item {item['id']}, wardrobe with {owned} items",
+                    returned="ModelUnavailable",
+                    note="handler: stopping, search results are still good",
+                )
+                return session
+
+            trace.step(
+                "suggest_outfit",
+                inputs=f"item {item['id']}, wardrobe with {owned} items",
+                returned=session["outfit_suggestion"],
+                note="empty wardrobe, so general advice" if owned == 0 else "",
             )
             stage = "fit_card"
 
         elif stage == "fit_card":
-            # Write the caption from the outfit and the item.
-            session["fit_card"] = create_fit_card(
-                session["outfit_suggestion"], session["selected_item"]
+            # Write the caption from the outfit and the item. This calls the
+            # model too, so it gets the same handler.
+            item = session["selected_item"]
+            try:
+                session["fit_card"] = create_fit_card(
+                    session["outfit_suggestion"], item
+                )
+            except ModelUnavailable as exc:
+                session["error"] = (
+                    f"I found {item['title']} for ${item['price']} on "
+                    f"{item['platform']} and styled it, but I couldn't reach the "
+                    f"model to write the fit card. The model said: {exc} "
+                    f"The outfit is still good, so here it is: "
+                    f"{session['outfit_suggestion']} "
+                    f"Run the same query again once the key is sorted."
+                )
+                trace.step(
+                    "create_fit_card",
+                    inputs=f"item {item['id']}, outfit of "
+                           f"{len(session['outfit_suggestion'])} chars",
+                    returned="ModelUnavailable",
+                    note="handler: stopping, outfit is still good",
+                )
+                return session
+
+            trace.step(
+                "create_fit_card",
+                inputs=f"item {item['id']}, outfit of "
+                       f"{len(session['outfit_suggestion'])} chars",
+                returned=session["fit_card"],
             )
             stage = "done"
 
         else:  # stage == "done"
+            trace.step("done", note="all three tools ran, returning the session")
             return session
 
 

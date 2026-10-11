@@ -326,17 +326,178 @@ that produced it:
      the same length, your branch isn't working — and this is the fastest way
      anyone will ever find that out. -->
 
+Produced with `python app.py ask '...' --trace`. The `trace.step()` calls live
+in `agent.py::run_agent`, one per stage of the loop.
+
 **Happy path**
 
 ```
+$ python app.py ask 'vintage graphic tee under $30' --trace
 
+[1] parse_query
+      in:  vintage graphic tee under $30
+      out: description='vintage graphic tee', size=None, max_price=30.0
+[2] search_listings (via MCP)
+      in:  description='vintage graphic tee', size=None, max_price=30.0
+      out: 10 items: Y2K Baby Tee — Butterfly Print, Graphic Tee — 2003 Tour Bootleg Style, Vintage Band Tee — Faded Grey … +7 more
+      →    branch: 10 results, carrying on
+[3] select_item
+      in:  10 results, taking index 0
+      out: Y2K Baby Tee — Butterfly Print ($18.0, depop)
+      →    selected_item id is lst_002
+[4] suggest_outfit
+      in:  item lst_002, wardrobe with 10 items
+      out: Pair your new Y2K baby tee with the baggy straight-leg jeans and chunky white sneakers for a cute, casual thro…
+[5] create_fit_card
+      in:  item lst_002, outfit of 187 chars
+      out: Obsessed with this Y2K butterfly tee I just scored! It’s yours on Depop for just $18.00. Pair it with baggy je…
+[6] done
+      →    all three tools ran, returning the session
+
+  Found:    Y2K Baby Tee — Butterfly Print — $18.0 on depop
+
+  Outfit:   Pair your new Y2K baby tee with the baggy straight-leg jeans and chunky white sneakers for a cute, casual throwback look. Throw on the black cropped zip hoodie if you need an extra layer!
+
+  Fit card: Obsessed with this Y2K butterfly tee I just scored! It’s yours on Depop for just $18.00. Pair it with baggy jeans and chunky sneakers for the ultimate throwback fit! ✨🦋
+
+0 model calls this session, 2 served from cache
 ```
+
+Step 2 is the MCP call. It is the only step that leaves my program: it starts
+`mcp_server.py`, asks it for `search_listings`, and shuts it down again. Steps 4
+and 5 are still direct calls into `tools.py`.
 
 **Empty search**
 
 ```
+$ python app.py ask 'designer ballgown size XXS under $5'
+
+
+  I couldn't find anything for "designer ballgown size XXS under $5". Try removing the price limit, using a different size, or simpler keywords.
+
+0 model calls this session
+```
+
+Two steps instead of six, and the last line says `0 model calls this session`.
+That is the branch doing its job: it reads the empty list at step 2 and returns
+before `suggest_outfit` is ever reached, so neither model call happens.
+
+### The three failure modes, triggered on purpose
+
+**1. Empty search.** Already handled before this unit, because it is the branch
+criterion 2 is about. Triggered with a query the data cannot match:
 
 ```
+$ python app.py ask 'designer ballgown size XXS under $5'
+
+  I couldn't find anything for "designer ballgown size XXS under $5". Try removing the price limit, using a different size, or simpler keywords.
+```
+
+No handler needed. The message names three things the user can actually change,
+and the trace above shows the loop stopping at step 2.
+
+**2. Empty wardrobe.** Triggered with the `--empty-wardrobe` flag, which hands
+`suggest_outfit` a wardrobe with no items in it:
+
+```
+$ python app.py ask 'platform sneakers size 8' --empty-wardrobe
+
+(running with an empty wardrobe)
+
+  Found:    Platform Sneakers — White Chunky Sole — $48.0 on poshmark
+
+  Outfit:   Hey there! Those chunky platform sneakers are such a fun Y2K find. You can easily style them with a simple graphic tee and some cargo pants for a cool streetwear vibe. Or, try pairing them with a denim skirt and a cropped hoodie for the ultimate 90s throwback!
+
+  Fit card: Score! I just found these chunky platform sneakers on Poshmark for only $48, and I am obsessed. They are giving me all the best 90s vibes and I can't wait to style them!
+
+0 model calls this session, 2 served from cache
+```
+
+No handler needed either. `suggest_outfit` already checks `wardrobe["items"]`
+and switches to a general advice prompt when the list is empty, which is the
+empty case I committed to in my Tool Inventory last unit. It returns a real
+non empty string and names no pieces the user does not own. With `--trace` the
+step reads `wardrobe with 0 items` and notes `empty wardrobe, so general advice`,
+so I can see which prompt it took rather than guessing.
+
+**3. Model unavailable.** This is the one that was genuinely broken.
+
+I triggered it by running one command with a deliberately wrong key in front of
+it, which beats editing `.env` because there is no way to forget to put the real
+key back:
+
+```
+GEMINI_API_KEY="AIzaSyBadKeyForTestingOnly_NotARealKey00" python app.py ask 'denim jacket under $50'
+```
+
+The query has to be one I have not asked before. An old query comes back out of
+the build cache without the model being called at all, and the last line says
+`served from cache`, which looks like a pass and proves nothing.
+
+*Before the handler*, calling `run_agent` directly gave a raw stack trace:
+
+```
+  File "agent.py", line 201, in run_agent
+    session["outfit_suggestion"] = suggest_outfit(
+  File "tools.py", line 191, in suggest_outfit
+    return generate(prompt, system=system)
+  File "generate.py", line 332, in generate
+    raise ModelUnavailable(_explain(exc)) from exc
+generate.ModelUnavailable: The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com.
+```
+
+*After the handler*:
+
+```
+$ GEMINI_API_KEY="<a wrong key>" python app.py ask 'denim jacket under $50' --trace
+
+[1] parse_query
+      in:  denim jacket under $50
+      out: description='denim jacket', size=None, max_price=50.0
+[2] search_listings (via MCP)
+      in:  description='denim jacket', size=None, max_price=50.0
+      out: 7 items: Denim Jacket — Light Wash, Cropped, Vintage Levi's 501 Jeans — Medium Wash, 90s Track Jacket — Navy/White Stripe … +4 more
+      →    branch: 7 results, carrying on
+[3] select_item
+      in:  7 results, taking index 0
+      out: Denim Jacket — Light Wash, Cropped ($42.0, poshmark)
+      →    selected_item id is lst_007
+[4] suggest_outfit
+      in:  item lst_007, wardrobe with 10 items
+      out: ModelUnavailable
+      →    handler: stopping, search results are still good
+
+  I found Denim Jacket — Light Wash, Cropped for $42.0 on poshmark, but I couldn't reach the model to style it, so there is no outfit or fit card. The model said: The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com. Once that is sorted, run the same query again.
+
+1 model calls this session
+```
+
+**What the handler is, and why it reads like that.** I wrapped both model
+calling stages in `agent.py::run_agent` in `try` / `except ModelUnavailable`,
+and each one puts a message in `session["error"]` and returns the session,
+rather than letting the exception escape.
+
+The thing I changed my mind about while writing it was how much to say. My first
+message was just "the model could not be reached", and reading it back there was
+nothing a user could do with it. So each message now carries the work that did
+succeed. The search found a real jacket at a real price before the model died,
+and throwing that away makes the failure look total when it is partial. The
+fit card handler goes further and prints the whole outfit inside the error,
+because by that point two of the three tools have worked and the user should
+still get to keep the outfit.
+
+The fit card handler is harder to trigger from the command line, because if the
+key is wrong then `suggest_outfit` dies first and the loop never reaches step 5.
+I checked it separately by swapping in a `create_fit_card` that raises, which
+gave `error set? True`, `outfit kept? True`, `fit_card: None`, and a step 5 in
+the trace reading `handler: stopping, outfit is still good`.
+
+**One note on `trace.py`.** My `trace.step()` calls sit inside `run_agent`, so
+they run on every query, and a plain `python app.py ask '...'` was printing all
+six steps on top of the answer. `app.py` only calls `start_trace()` when you
+pass `--trace`, so I added a `_enabled` flag in `trace.py` that `start_trace()`
+switches on, and `step()` returns early when it is off. The formatting is
+untouched.
 
 **On the MCP move:** <!-- what changed in your code, and whether anything
 behaved differently afterwards. If the rewire didn't work, say exactly where it
