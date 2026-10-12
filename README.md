@@ -267,18 +267,266 @@ Score! Just hunted down these vintage Levi's 501 jeans in the absolute best medi
 
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. A matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 2. An impossible query stops before the second tool | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. The item found is the item that gets styled | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 4. The fit card names the price | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 5. The price ceiling is never crossed | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+
+Produced by `run_eval.py::main`, which ran every scenario in `scenarios.py`
+five separate times with caching off, against `agent.py::run_agent`. The full
+file is committed at `results/run_2026-10-11_1759_before.md`. 50 model calls,
+no crashes, no scenario stopped for a reason it was not supposed to.
+
+One row needed evidence the results file does not record, and one row is weaker
+than it looks. Both are written up honestly under the output below.
 
 **Real output from one try**, pasted as text, naming the file and function
 that produced it:
 
-```
+---
+
+#### Criterion 1: a matching query completes all three tools
+
+Scenario `matching query completes`, query `vintage graphic tee under $30`.
+Output from `agent.py::run_agent`, captured by `run_eval.py::run_once`.
 
 ```
+- stopped early: no
+- selected_item: Y2K Baby Tee — Butterfly Print ($18.0, depop)
+- search_results: 10
+
+Fit card:
+Obsessed with this Y2K butterfly baby tee I just scored! 🦋 Grab it on my Depop right now for just $18.00 before it's gone. Go check out my page to snag this little piece of early 2000s magic!
+
+Trace:
+[1] parse_query
+      in:  vintage graphic tee under $30
+      out: description='vintage graphic tee', size=None, max_price=30.0
+[2] search_listings (via MCP)
+      in:  description='vintage graphic tee', size=None, max_price=30.0
+      out: 10 items: Y2K Baby Tee — Butterfly Print, Graphic Tee — 2003 Tour Bootleg Style, Vintage Band Tee — Faded Grey … +7 more
+      →    branch: 10 results, carrying on
+[3] select_item
+      in:  10 results, taking index 0
+      out: Y2K Baby Tee — Butterfly Print ($18.0, depop)
+      →    selected_item id is lst_002
+[4] suggest_outfit
+      in:  item lst_002, wardrobe with 10 items
+      out: Hey friend! Layer your new Y2K baby tee over the white ribbed tank top and pair it with your baggy straight-le…
+[5] create_fit_card
+      in:  item lst_002, outfit of 376 chars
+      out: Obsessed with this Y2K butterfly baby tee I just scored! 🦋 Grab it on my Depop right now for just $18.00 befor…
+[6] done
+      →    all three tools ran, returning the session
+```
+
+How I read it: six trace steps, so all three tools ran in order and none was
+skipped, and the fit card is a real non empty string. Same on all five tries.
+**5 of 5, target was 4 of 5, MET.**
+
+---
+
+#### Criterion 2: an impossible query stops before the second tool
+
+Scenario `impossible query stops early`, query `designer ballgown size XXS under $5`.
+Output from `agent.py::run_agent`, captured by `run_eval.py::run_once`.
+
+```
+- stopped early: yes — I couldn't find anything for "designer ballgown size XXS under $5". Try removing the price limit, using a different size, or simpler keywords.
+- selected_item: (none)
+- search_results: 0
+
+Trace:
+[1] parse_query
+      in:  designer ballgown size XXS under $5
+      out: description='designer ballgown', size='XXS', max_price=5.0
+[2] search_listings (via MCP)
+      in:  description='designer ballgown', size='XXS', max_price=5.0
+      out: [] (empty)
+      →    branch: empty list, stopping before suggest_outfit
+```
+
+How I read it: the trace stops at step 2. There is no `suggest_outfit` step at
+all, `selected_item` is `(none)`, and the message names three things the user
+could change. The whole scenario reported `0 model calls`, which is the part I
+trust most, because `suggest_outfit` cannot have run without calling the model.
+Same on all five tries. **5 of 5, target was 5 of 5, MET.**
+
+---
+
+#### Criterion 3: the item found is the item that gets styled
+
+Scenario `selected item is the item styled`, query `90s track jacket in size M`.
+Output from `agent.py::run_agent`, captured by `run_eval.py::run_once`.
+
+```
+- stopped early: no
+- selected_item: 90s Track Jacket — Navy/White Stripe ($45.0, poshmark)
+- search_results: 4
+
+Trace:
+[1] parse_query
+      in:  90s track jacket in size M
+      out: description='90s track jacket in', size='M', max_price=None
+[2] search_listings (via MCP)
+      in:  description='90s track jacket in', size='M', max_price=None
+      out: 4 items: 90s Track Jacket — Navy/White Stripe, 90s Leather Bomber — Black, 90s Silk Slip Dress — Floral, Midi Length … +1 more
+      →    branch: 4 results, carrying on
+[3] select_item
+      in:  4 results, taking index 0
+      out: 90s Track Jacket — Navy/White Stripe ($45.0, poshmark)
+      →    selected_item id is lst_004
+[4] suggest_outfit
+      in:  item lst_004, wardrobe with 10 items
+      out: Layer your 90s track jacket over the white ribbed tank top and pair them with the baggy straight-leg jeans and…
+[5] create_fit_card
+      in:  item lst_004, outfit of 322 chars
+      out: Score! 🏆 Found this gorgeous 90s track jacket on Poshmark for just $45.00, and I am obsessed. I'm totally styl…
+[6] done
+      →    all three tools ran, returning the session
+```
+
+How I read it: my criterion says to compare `session["selected_item"]["id"]`
+against the item going into `suggest_outfit`. Step 3 prints
+`selected_item id is lst_004` and step 4 prints `item lst_004` as its input.
+Those are the two values the criterion names, and they are the same string.
+All five tries printed `lst_004` in both places. **5 of 5, target was 5 of 5,
+MET.**
+
+I added those two ids to the trace in Milestone 2 specifically so this
+criterion could be read off the output instead of taken on trust. Before that
+the trace printed the item title, and two different listings can share a title
+prefix, so a title match would not have proved it.
+
+---
+
+#### Criterion 4: the fit card names the price
+
+Scenario `fit card names the price`, query `silk slip dress in midi length under $40`.
+The top result is `lst_013` at `$30.0`, so I am looking for `30` in the caption.
+All five captions from `tools.py::create_fit_card`, via `run_eval.py::run_once`:
+
+```
+Try 1: Found my ultimate 90s dream on Depop! This floral midi silk slip dress is only $30, and I am so obsessed. Throw it over a white ribbed tank with chunky sneakers for sunny days, or layer an oversized grey crewneck and combat boots when it gets chilly. 🌸👟✨
+Try 2: Found this absolute dream of a 90s floral silk slip dress thrifted for just $30.0! I'm totally obsessed with layering it over baggy jeans and a white tank for that ultimate retro vibe, but it looks just as cute with an oversized crewneck. Snag this beauty now over on my Depop before I change my mind and keep it! ✨🌸
+Try 3: Found the ultimate 90s floral silk slip dress and I'm obsessed! Snagged this beauty on Depop for just $30.00, and it's so versatile. Layer it over jeans and a tank with chunky sneakers, or throw on an oversized crewneck and combat boots for the coziest contrast!
+Try 4: Obsessed with this 90s floral silk slip dress I just scored for only $30! I'm planning to layer it over baggy jeans or throw an oversized crewneck on top for the ultimate grunge-chic look. Snag this absolute gem over on my Depop before I change my mind and keep it!
+Try 5: Found my absolute holy grail: this gorgeous 90s silk slip dress! 🌸 Snagged it for just $30.00 and I'm already dreaming up ways to style it. Head over to my Depop to grab this beauty before I change my mind!
+```
+
+How I read it: the price appears in every one of the five, written three
+different ways, `$30`, `$30.0` and `$30.00`. My criterion says the number from
+`new_item["price"]` has to appear somewhere in the caption, and `30` does in all
+five. **5 of 5, target was 4 of 5, MET.**
+
+Worth saying what did *not* happen: I set this target at 4 of 5 because I
+expected the model to sometimes round or write around the number, which is why
+I wrote "just under twenty" into my reason last unit. It never did that once in
+five. The five captions are otherwise all different text, so this is not the
+cache handing back one answer.
+
+---
+
+#### Criterion 5: the price ceiling is never crossed
+
+Scenario `price ceiling is never crossed`, query `vintage graphic tee under $30`.
+
+`run_eval.py` records how many results came back but not what they cost, and my
+criterion is about **every** listing returned, not just the one that got picked.
+Its row in the results file shows `search_results: 10` and a selected item at
+`$18.0`, which says nothing about the other nine. So I measured it directly,
+five times, reading `session["search_results"]` out of `agent.py::run_agent`
+with caching off, the same way `run_eval.py` runs it:
+
+```
+$ python -c "import config; config.CACHE_ENABLED = False; ..."   # full command below
+
+try 1: 10 results, prices [12.0, 15.0, 18.0, 19.0, 20.0, 22.0, 24.0, 26.0, 27.0, 30.0]
+         max=30.0  over: none
+try 2: 10 results, prices [12.0, 15.0, 18.0, 19.0, 20.0, 22.0, 24.0, 26.0, 27.0, 30.0]
+         max=30.0  over: none
+try 3: 10 results, prices [12.0, 15.0, 18.0, 19.0, 20.0, 22.0, 24.0, 26.0, 27.0, 30.0]
+         max=30.0  over: none
+try 4: 10 results, prices [12.0, 15.0, 18.0, 19.0, 20.0, 22.0, 24.0, 26.0, 27.0, 30.0]
+         max=30.0  over: none
+try 5: 10 results, prices [12.0, 15.0, 18.0, 19.0, 20.0, 22.0, 24.0, 26.0, 27.0, 30.0]
+         max=30.0  over: none
+```
+
+The command, so it can be run again:
+
+```
+python -c "
+import config
+config.CACHE_ENABLED = False
+from agent import run_agent
+from utils.data_loader import get_example_wardrobe
+CEILING = 30.0
+for attempt in range(1, 6):
+    s = run_agent('vintage graphic tee under \$30', get_example_wardrobe())
+    prices = [x['price'] for x in s['search_results']]
+    over = [p for p in prices if p > CEILING]
+    print(f'try {attempt}: {len(prices)} results, prices {sorted(prices)}')
+    print(f'         max={max(prices)}  over: {over or \"none\"}')
+"
+```
+
+How I read it: ten results every try, nothing above the ceiling, and the top
+price is exactly `$30.0` every time. That last part is the bit I wanted to see.
+My Tool Inventory promised `max_price` was **inclusive**, so an item priced at
+exactly the ceiling has to come back, and it does. A filter using `<` instead of
+`<=` would have dropped it and still looked like a pass on a careless reading.
+**5 of 5, target was 5 of 5, MET.**
+
+---
+
+#### A note on criterion 1, before I claim too much for it
+
+All five criteria came out MET, so it is worth being plain about which rows are
+strong evidence and which are not.
+
+Rows 2, 3 and 5 are deterministic. No model is involved in what they measure, so
+five identical tries is the expected result and it is still worth having, because
+it is what tells me the MCP hop did not change the shape of the return value.
+
+Row 4 is the one that genuinely could have gone either way, because the caption
+is written by the model at temperature 0.9. Five different captions, price in
+all five.
+
+Row 1 is the weak one, and I would rather say so than let the PASS cells speak.
+My criterion reads "given a query that matches at least one listing", and I
+tested it with one query five times. Search is plain Python, so those five tries
+are the same search five times, and the only thing that actually varied is the
+model output. The reason I wrote under the criterion last unit is about
+something else entirely: a shopper phrasing a request in words the data does not
+contain. My scenario never tests that, so a 5 of 5 here is a narrower claim than
+the criterion sounds like.
+
+I ran a separate probe of ten realistic phrasings against `tools.py::search_listings`
+to see how wide the gap is:
+
+```
+10 ok          'vintage graphic tee under $30'
+5 ok           'a cute baby tee'
+10 ok          'something sporty for the gym'
+ZERO RESULTS   'black boots size 8'
+2 ok           'cargo pants'
+10 ok          'looking for a windbreaker'
+5 ok           'y2k top under $25'
+6 ok           'oversized hoodie'
+6 ok           'summer dress under $40'
+7 ok           'leather jacket'
+```
+
+Nine of ten found something. The one that found nothing turned out to be
+correct: the data has four pairs of shoes and the only boots in it are tan
+Chelsea boots in `US 8.5`, so there are no black boots in size 8 to find. That
+is criterion 2 behaviour, not a search bug.
+
+This is a diagnostic run and not one of my five tries, so it does not change the
+row. I am carrying it into the next section, because the thing it points at is
+my criterion rather than my agent.
 
 ---
 
