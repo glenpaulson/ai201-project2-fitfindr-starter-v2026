@@ -247,6 +247,49 @@ Score! Just hunted down these vintage Levi's 501 jeans in the absolute best medi
   left it and used that limitation as the reason my criterion 1 target is 4 of 5
   instead of 5 of 5.
 
+**Moment 3 (unit 4)**
+
+- *What I asked for:* Where the `trace.step()` calls should go in `run_agent`,
+  and what to pass to each one.
+- *What came back:* One call per stage, with the branch decision written into
+  the `note` so the trace says why it carried on or stopped, not just what
+  happened.
+- *What I changed:* The first version passed the `parsed` dict straight in as
+  `inputs`. `trace.py` shortens a dict it does not recognise to just its key
+  names, so every trace printed `dict with keys: description, size, max_price`
+  and none of the actual values. That is useless for diagnosing, which is the
+  whole point of the trace, so I pass a formatted string instead and the trace
+  now reads `description='levis jeans', size='30', max_price=None`. Criterion 1
+  was later diagnosed straight off that line.
+
+**Moment 4 (unit 4)**
+
+- *What I asked for:* I had all five criteria passing 5 of 5 and asked whether
+  that was a real result or a weak test.
+- *What came back:* That criterion 1 could not fail for the reason I had
+  written under it. Saying "given a query that matches at least one listing"
+  makes search already having worked a precondition, so the criterion only
+  measures whether the loop finishes afterwards, and I had tested it with one
+  query five times against a search function with no model in it.
+- *What I changed:* Revised criterion 1 to name five different phrasings for
+  five items I confirmed are in the data, keeping the original line and the
+  target of 4 of 5. On the next run it scored 2 of 5. The revision is what
+  turned a clean sheet into an actual finding.
+
+**Moment 5 (unit 4)**
+
+- *What I asked for:* A fix for the scoring ties that were handing back the
+  wrong item on two of my five phrasings.
+- *What came back:* Score rarer words higher, so `silk` counts for more than
+  `green`.
+- *What I changed:* Nothing, after measuring it. I counted how often each word
+  appears across the 40 listings and scored a match as `1 / that count`. It
+  fixes `a green silk shirt` and makes `small tan purse` worse, because `small`
+  appears in exactly one listing and so becomes the rarest word in the query.
+  It would have taken criterion 1 to 4 of 5 and MET while making one of the two
+  broken cases worse, so I left it out and wrote the measurement into What's
+  Still Broken instead.
+
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 
      Don't fill these in during unit 3.
@@ -1170,7 +1213,104 @@ from the one the seller typed.
      you did. "I ran out of time" is fine if it's true. Pretending nothing is
      left is not. -->
 
+### Criterion 1, still MISSED at 3 of 5
 
+Tries 3 and 4 still fail, for the reason my diagnosis named and my improvement
+deliberately did not touch: `search_listings` scores a listing by counting how
+many query keywords appear in it, one point each, nothing weighted. Ties are
+common and the sort is stable, so a tie is settled by whichever listing happens
+to sit earlier in `listings.json`.
+
+```
+'a green silk shirt'  picked lst_024 score=2 ['green','shirt']  / wanted lst_029 score=2 ['green','silk']
+'small tan purse'     picked lst_002 score=1 ['small']          / wanted lst_039 score=1 ['tan']
+```
+
+**What I would do, and what I found out about it.** The obvious fix is to stop
+treating every word as equally informative and score rarer words higher, so
+`silk` outranks `green`. Before writing it in here as the answer I measured it
+against the data, counting how many of the 40 listings contain each word and
+scoring a match as `1 / that count`:
+
+```
+   'green'     3 listings
+   'silk'      2 listings
+   'shirt'     4 listings
+   'small'     1 listings
+   'tan'       4 listings
+   'purse'     0 listings
+
+  a green silk shirt
+     lst_024 rarity score 0.583  from ['green(1/3)', 'shirt(1/4)']
+     lst_029 rarity score 0.833  from ['green(1/3)', 'silk(1/2)']   <- now wins, correct
+  small tan purse
+     lst_002 rarity score 1.000  from ['small(1/1)']                <- still wins, still wrong
+     lst_039 rarity score 0.250  from ['tan(1/4)']
+```
+
+It fixes try 3 and it makes try 4 **worse**. The word `small` appears in
+exactly one listing in the whole catalogue, which makes it the rarest word in
+that query and hands the baby tee an even bigger lead. Rarity is a good proxy
+for "informative" right up until the rare word is rare by accident. Here it is
+rare because one seller happened to write "tag says medium but fits like a
+small" in a description.
+
+So I am not shipping it. It would have moved criterion 1 from 3 of 5 to 4 of 5
+and turned the row MET, and it would have done that while making one of the two
+broken cases worse. That is a number improving for a reason I do not endorse,
+and it is the kind of thing this unit is about not doing.
+
+**What try 4 actually needs is not a scoring change at all.** The word `purse`
+appears in **zero** of the 40 listings. The item exists, it is `lst_039 Mini
+Shoulder Bag, Tan Leather`, and the data simply never uses the shopper's word
+for it. No amount of reweighting a keyword count will find a bag by searching
+for `purse`, because there is nothing to match. That needs either a synonym
+layer, or the model doing the query understanding instead of a substring count,
+and either one is a new tool rather than a tweak to this one.
+
+**Why I stopped here.** The unit allows one change and I spent it on mechanism
+A, which I still think was right: being told nothing exists when it does is a
+dead end for a user, and being handed the wrong item at least gives them
+something to push back on. The second reason is the paragraph above. I found
+out the easy fix was wrong by testing it, which is better than finding out
+after submitting, but it means the real fix is a bigger piece of work than I
+have left.
+
+### Things that are not failing yet but will
+
+**The brand word does not match when it has an apostrophe.** `levis` appears in
+0 listings. `levi's` appears in 2. A shopper typing the brand the natural way,
+without the apostrophe, gets nothing from that word. Try 1 passes anyway
+because `jeans` carries it, so this never shows up as a failure in my run log.
+It would the moment someone searches for a brand by name alone. Stripping
+punctuation from the haystack the same way I already strip it from the query
+would fix it, and I did not do it because it was not what my diagnosis named.
+
+**My size fix only knows one convention.** I taught the filter that a plain
+number can match a `W` token, because `W30` is how these 40 listings write a
+waist. A real catalogue would also have `30x32`, `UK 10`, `EU 38` and sizes
+spelled out as words, and none of those work. What I fixed is this data's
+spelling of a waist size, not the general problem.
+
+### A criterion I would change, and did not
+
+Criterion 3 is too loose, and I said so in my diagnosis rather than quietly
+rewriting it. As written it compares `session["selected_item"]["id"]` against
+the id going into `suggest_outfit`, which are the same value set by one
+assignment a few lines apart. It passes 5 of 5 and it passed 5 of 5 on the run
+where the agent styled a butterfly baby tee for someone shopping for a tan
+purse, because it never asks whether the selected item was the right one.
+
+The version worth having would say the selected id is the id of the best
+matching listing for the query, which is a claim that can fail and which would
+have caught tries 3 and 4 on its own. I have not made that change, because
+tightening a criterion I passed is not one of the two moves allowed this unit,
+and doing it quietly after seeing the results is worse than leaving it and
+saying what is wrong with it.
+
+The honest summary of my five criteria as a set: four of them check that the
+machinery holds together, and it does. Only criterion 1 checks whether the
+answer is any good, and that is the one still missing its target.
 
 <!-- ═════════════════════════════════════════════════════════════════════
 
@@ -1189,17 +1329,23 @@ from the one the seller typed.
 
      SUBMISSION CHECKLIST — unit 4
 
-       [ ] mcp_server.py exists with one tool registered
-           (or a written record of exactly where the rewire broke)
-       [ ] Run Log — Before, five criteria, five tries each
-       [ ] Real output pasted underneath, naming file and function
-       [ ] A verdict on every criterion
-       [ ] A diagnosis for every miss, naming a place AND a mechanism
-       [ ] Loop Trace, with the MCP call visible in it
-       [ ] All three failure modes triggered and handled
-       [ ] One improvement, with Run Log — After in the same format
-       [ ] What's Still Broken
-       [ ] At least four new commits
+       [x] mcp_server.py exists with one tool registered
+           (search_listings, with its description and typed inputs)
+       [x] Run Log — Before, five criteria, five tries each
+           (results/run_2026-10-11_1825_before.md)
+       [x] Real output pasted underneath, naming file and function
+       [x] A verdict on every criterion
+       [x] A diagnosis for every miss, naming a place AND a mechanism
+           (tools.py::search_listings; mechanism A the size filter,
+            mechanism B the unweighted score and its tie order)
+       [x] Loop Trace, with the MCP call visible in it
+           (step 2, "search_listings (via MCP)")
+       [x] All three failure modes triggered and handled
+           (empty search, empty wardrobe, model unavailable)
+       [x] One improvement, with Run Log — After in the same format
+           (results/run_2026-10-11_2000_after.md)
+       [x] What's Still Broken
+       [x] At least four new commits
        [ ] The SAME repository URL as last unit
 
      Do not delete and recreate this repository. Your commit history is what
