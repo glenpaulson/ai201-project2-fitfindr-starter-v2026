@@ -14,13 +14,50 @@ own criteria need — these are a starting point, not a fixed set.
 """
 
 SCENARIOS = [
+    # ── Criterion 1, revised in unit 4 ───────────────────────────────────────
+    #
+    # The original criterion was one query run five times. search_listings is
+    # plain Python, so that was the same search five times and it could only
+    # ever measure determinism. The revised criterion names five different
+    # phrasings instead, so here they are as five scenarios. Each one is a
+    # wording a shopper would plausibly type for an item I checked is really in
+    # data/listings.json, and I chose all five before running any of them.
+    #
+    # The five tries of criterion 1 are these five rows, not five repeats of
+    # one row. run_eval.py still runs each one five times, which is a free
+    # extra: it tells me whether a given phrasing is stable as well as whether
+    # it works.
     {
-        # A query the data can match. Criterion 1.
-        "name": "matching query completes",
-        "query": "vintage graphic tee under $30",
+        "name": "c1 phrasing 1: levis jeans",
+        "query": "levis jeans size 30",          # lst_001, W30 L30
         "wardrobe": "example",
         "criterion": 1,
     },
+    {
+        "name": "c1 phrasing 2: black bomber jacket",
+        "query": "black bomber jacket",          # lst_022
+        "wardrobe": "example",
+        "criterion": 1,
+    },
+    {
+        "name": "c1 phrasing 3: green silk shirt",
+        "query": "a green silk shirt",           # lst_029, titled "Silk Button-Down"
+        "wardrobe": "example",
+        "criterion": 1,
+    },
+    {
+        "name": "c1 phrasing 4: small tan purse",
+        "query": "small tan purse",              # lst_039, titled "Mini Shoulder Bag"
+        "wardrobe": "example",
+        "criterion": 1,
+    },
+    {
+        "name": "c1 phrasing 5: chunky knit cardigan",
+        "query": "chunky knit cardigan",         # lst_008
+        "wardrobe": "example",
+        "criterion": 1,
+    },
+    # ─────────────────────────────────────────────────────────────────────────
     {
         # A query nothing can match. Criterion 2, the branch.
         "name": "impossible query stops early",

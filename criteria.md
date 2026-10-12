@@ -33,6 +33,40 @@ titled "baby tee", or a synonym the seller never wrote), and then a real match
 scores zero and gets dropped. 4 of 5 leaves room for that phrasing gap. It is
 my search being literal, not the loop failing.
 
+> **Revised in unit 4:** Given these five queries, each one the way a shopper
+> would describe an item that really is in `data/listings.json`, the agent
+> returns a fit card for at least 4 of the 5.
+>
+> | # | Query | The item it should find |
+> |---|---|---|
+> | 1 | `levis jeans size 30` | lst_001, Vintage Levi's 501 Jeans, W30 L30 |
+> | 2 | `black bomber jacket` | lst_022, 90s Leather Bomber, Black |
+> | 3 | `a green silk shirt` | lst_029, Silk Button-Down, Sage Green |
+> | 4 | `small tan purse` | lst_039, Mini Shoulder Bag, Tan Leather |
+> | 5 | `chunky knit cardigan` | lst_008, Oversized Knit Cardigan, Chunky Brown |
+>
+> **Why revised:** The original says "given a query that matches at least one
+> listing", which makes search already having worked a precondition. That
+> leaves the criterion measuring only whether the loop finishes afterwards,
+> and the loop is five plain `if` branches with nothing random in them. So the
+> original could not fail for the reason I wrote underneath it. The reason is
+> about a shopper using words the seller never typed, and the original wording
+> defines that case away instead of testing it.
+>
+> It also could not be measured the way I ran it. I tested it with one query
+> five times, and `search_listings` is plain Python, so those were the same
+> search five times. Five tries of a deterministic function measure
+> determinism, not the phrasing gap.
+>
+> The revision fixes both. Five different phrasings means the five tries are
+> five real tries, and every item named above is one I confirmed is in the data
+> first, so a zero result is my search being literal and not the shopper asking
+> for something that does not exist. I picked the wordings before running any
+> of them.
+>
+> **The target stays at 4 of 5.** This is a revision because the old one
+> measured the wrong thing, not because I missed it. I had not missed it.
+
 ---
 
 ## 2. An impossible query stops before the second tool
