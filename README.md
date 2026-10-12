@@ -974,21 +974,188 @@ be instant now has a visible pause at the search step.
 
      `python run_eval.py --label after` -->
 
-**What I changed:**
+**What I changed:** one filter, in one tool, in `tools.py::search_listings`.
+A size written as a plain number is now also allowed to match a waist token.
 
-**Which failure it was meant to fix:**
+```python
+# before
+if size is not None:
+    size_tokens = listing["size"].lower().replace("/", " ").split()
+    if size.strip().lower() not in size_tokens:
+        continue
 
-### Run Log — After
+# after
+if size is not None:
+    size_tokens = listing["size"].lower().replace("/", " ").split()
+    wanted = size.strip().lower()
+    matches_size = wanted in size_tokens
+
+    if not matches_size and wanted.isdigit():
+        matches_size = ("w" + wanted) in size_tokens
+
+    if not matches_size:
+        continue
+```
+
+That is the whole change. Four lines. Nothing else in the repo moved:
+`agent.py`, `mcp_server.py`, `trace.py`, the prompts, the scenarios and the
+criteria are all byte for byte what they were for the before run.
+
+Two things I decided on purpose while writing it.
+
+I match the `w` token only, never `l`. A listing sized `W28 L30` is a 28 waist
+with a 30 inseam, so letting a `30` match the `L` token would hand someone
+trousers that do not fit and would look like the search working.
+
+I kept the whole token rule as the first test rather than replacing it. It is
+the right rule, and it is the thing standing between me and the substring trap
+the starter warned about. The number rule only runs when the whole token test
+has already failed and the request is all digits, so it can only ever add
+listings that the old rule rejected. It cannot loosen anything else.
+
+**Which failure it was meant to fix:** mechanism A from my diagnosis, the one
+that cost me try 1 of criterion 1. `levis jeans size 30` returned an empty list
+because `lst_001` is sized `W30 L30`, which tokenises to `['w30', 'l30']`, and
+`'30'` is equal to neither. Every pair of bottoms in the data is sized that
+way, so the filter was discarding all of them for any numeric size.
+
+**Which failure it was not meant to fix:** mechanism B, the scoring ties that
+cost me tries 3 and 4. I am allowed one change and I picked the one that
+produces the worse experience. Being told nothing exists when it does is a
+dead end for a user. Being handed the wrong item at least gives them something
+to react to. Mechanism B is untouched and I expect tries 3 and 4 to fail again,
+which is the point of saying so before the run rather than after.
+
+### Run Log — Before
+
+Repeated here so the two are side by side. Full file:
+`results/run_2026-10-11_1825_before.md`.
 
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. A matching query completes all three tools *(revised)* | 4 of 5 | FAIL | PASS | FAIL | FAIL | PASS | **MISSED (2/5)** |
+| 2. An impossible query stops before the second tool | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. The item found is the item that gets styled | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 4. The fit card names the price | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 5. The price ceiling is never crossed | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+
+### Run Log — After
+
+`python run_eval.py --label after`, same ten scenarios, five tries each,
+caching off. Full file: `results/run_2026-10-11_2000_after.md`.
+
+| Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
+|---|---|---|---|---|---|---|---|
+| 1. A matching query completes all three tools *(revised)* | 4 of 5 | **PASS** | PASS | FAIL | FAIL | PASS | **MISSED (3/5)** |
+| 2. An impossible query stops before the second tool | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. The item found is the item that gets styled | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 4. The fit card names the price | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 5. The price ceiling is never crossed | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+
+Criterion 1 try by try, before against after:
+
+| Try | Query | Before | After | Selected after the change |
+|---|---|---|---|---|
+| 1 | `levis jeans size 30` | FAIL, nothing found | **PASS** | lst_001 Vintage Levi's 501 Jeans, $38.0 |
+| 2 | `black bomber jacket` | PASS | PASS | lst_022 90s Leather Bomber |
+| 3 | `a green silk shirt` | FAIL, wrong item | FAIL, wrong item | lst_024 Vintage Polo Shirt, still not lst_029 |
+| 4 | `small tan purse` | FAIL, wrong item | FAIL, wrong item | lst_002 Y2K Baby Tee, still not lst_039 |
+| 5 | `chunky knit cardigan` | PASS | PASS | lst_008 Knit Cardigan |
 
 **Did it help, and how do I know:**
+
+Yes, and only as much as I said it would. Criterion 1 went from 2 of 5 to 3 of
+5. It is still MISSED, because the target is 4 of 5 and the target does not
+move.
+
+The try it was aimed at is the try that changed. Here is try 1 after the
+change, from `agent.py::run_agent` via `run_eval.py::run_once`:
+
+```
+- stopped early: no
+- selected_item: Vintage Levi's 501 Jeans — Medium Wash ($38.0, depop)
+- search_results: 1
+
+Fit card:
+Scored these dreamy medium wash Vintage Levi's 501 Jeans and I'm obsessed! Grab this absolute steal for just $38.0 over on my depop before someone else snatches them up. Go build your dream fit and tag me in your pics!
+
+Trace:
+[1] parse_query
+      in:  levis jeans size 30
+      out: description='levis jeans', size='30', max_price=None
+[2] search_listings (via MCP)
+      in:  description='levis jeans', size='30', max_price=None
+      out: 1 items: Vintage Levi's 501 Jeans — Medium Wash
+      →    branch: 1 results, carrying on
+[3] select_item
+      in:  1 results, taking index 0
+      out: Vintage Levi's 501 Jeans — Medium Wash ($38.0, depop)
+      →    selected_item id is lst_001
+[4] suggest_outfit
+      in:  item lst_001, wardrobe with 10 items
+      out: Hey friend! Those medium wash Vintage Levi's 501 Jeans are an incredible find.   Try pairing your new jeans wi…
+[5] create_fit_card
+      in:  item lst_001, outfit of 353 chars
+      out: Scored these dreamy medium wash Vintage Levi's 501 Jeans and I'm obsessed! Grab this absolute steal for just $…
+[6] done
+      →    all three tools ran, returning the session
+```
+
+Two steps became six. The same query that returned an empty list five times in
+a row now finds `lst_001`, which is the exact listing my revised criterion
+named, and takes it all the way through to a fit card. All five tries did it.
+
+Tries 3 and 4 failed again, with the same two wrong items as before, which is
+what I predicted above and is the correct outcome. Mechanism B is a scoring
+tie, this change touched the size filter, and a change that had somehow fixed
+tries 3 and 4 as well would mean I had not understood either problem.
+
+**What I checked that could have gone wrong.** A size filter that lets more
+through can let the wrong things through, and the rule I loosened is the one
+guarding the substring trap. So I tested the edges directly against
+`tools.py::search_listings` before running the eval:
+
+```
+  size='s'   on 'jeans'    ->  0 results, sizes []
+  size='l'   on 'hoodie'   ->  1 results, sizes ['L']
+  size='32'  on 'jeans'    ->  1 results, sizes ['W32']
+  size='28'  on 'jeans'    ->  1 results, sizes ['W28']
+  size='8'   on 'sneakers' ->  1 results, sizes ['US 8']
+  size='m'   on 'tee'      ->  2 results, sizes ['S/M']
+```
+
+A small still does not match `US 9` or any waist. An `L` still does not match
+`XL`. A 32 returns `W32` and not `W30`, so the number rule is matching the
+whole waist token and not a prefix. Shoes and tops behave exactly as they did
+before.
+
+The other four criteria were all 5 of 5 before and are all 5 of 5 after, which
+is the result I wanted from them. Criterion 5 in particular I measured again the
+same way, printing every returned price rather than just the selected one:
+
+```
+try 1: 10 results, prices [12.0, 15.0, 18.0, 19.0, 20.0, 22.0, 24.0, 26.0, 27.0, 30.0]
+         max=30.0  over: none
+try 2: 10 results, prices [12.0, 15.0, 18.0, 19.0, 20.0, 22.0, 24.0, 26.0, 27.0, 30.0]
+         max=30.0  over: none
+try 3: 10 results, prices [12.0, 15.0, 18.0, 19.0, 20.0, 22.0, 24.0, 26.0, 27.0, 30.0]
+         max=30.0  over: none
+try 4: 10 results, prices [12.0, 15.0, 18.0, 19.0, 20.0, 22.0, 24.0, 26.0, 27.0, 30.0]
+         max=30.0  over: none
+try 5: 10 results, prices [12.0, 15.0, 18.0, 19.0, 20.0, 22.0, 24.0, 26.0, 27.0, 30.0]
+         max=30.0  over: none
+```
+
+Identical to before, which is what a change confined to the size filter should
+do to a query that has no size in it.
+
+**One honest limit on this result.** Three of five is a better number than two
+of five, but the fix is narrower than the diagnosis. I taught the filter one
+convention, `W` for waist, because that is the only one in these 40 listings.
+A real catalogue would also have `30x32`, `UK 10`, `EU 38` and sizes written as
+words, and none of those would work. What I fixed is this data's spelling of a
+waist size, not the general problem of reading a size written a different way
+from the one the seller typed.
 
 <!-- If it made things worse, say that. Honestly reported, that earns full
      credit and is more interesting than one that worked. -->

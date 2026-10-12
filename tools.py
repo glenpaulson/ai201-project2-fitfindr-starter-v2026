@@ -96,7 +96,23 @@ def search_listings(
         # "S/M" but not "XL". "S/M" becomes ["s", "m"], "US 8" -> ["us", "8"].
         if size is not None:
             size_tokens = listing["size"].lower().replace("/", " ").split()
-            if size.strip().lower() not in size_tokens:
+            wanted = size.strip().lower()
+            matches_size = wanted in size_tokens
+
+            # UNIT 4 FIX (mechanism A from my diagnosis). Someone shopping for
+            # jeans types "size 30", but every pair of bottoms in the data is
+            # sized "W30" or "W30 L30". "30" is not equal to "w30", so the
+            # whole token rule above was dropping every pair of jeans before
+            # they were ever scored. A plain number is now also allowed to
+            # match the waist token.
+            #
+            # I match the W token only, on purpose. "W28 L30" is a 28 waist
+            # with a 30 inseam, and someone asking for a 30 means the waist.
+            # Matching L too would hand them trousers that do not fit.
+            if not matches_size and wanted.isdigit():
+                matches_size = ("w" + wanted) in size_tokens
+
+            if not matches_size:
                 continue
 
         # 3) score by how many keywords appear in the title, description, or tags
