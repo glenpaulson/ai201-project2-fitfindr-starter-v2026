@@ -169,3 +169,114 @@ PowerShell double quote eats the `$30` before my code ever sees it.
      A number you missed stays where it is, gets diagnosed, and gets a fix
      attempted. That's where the points are.
      ───────────────────────────────────────────────────────────────────────── -->
+
+
+---
+
+# Capstone criteria (unit 9)
+
+Written on November 15, 2026, before running any Milestone 5 test. These are
+about the logging I added to `serve.py` for the capstone, not about the agent
+from units 3 and 4. All five are checked by sending requests to a running
+`python serve.py` with `AI201_CACHE=0`, and each one gets three trials.
+
+**The test queries.** Criteria 1, 2 and 3 use the same ten matching queries
+from my Milestone 3 session:
+
+1. `vintage graphic tee under $30`
+2. `90s track jacket in size M`
+3. `silk slip dress in midi length under $40`
+4. `platform sneakers size 8`
+5. `denim jacket under $50`
+6. `black leather jacket under $80`
+7. `baggy jeans size 32`
+8. `cozy oversized hoodie`
+9. `chunky knit sweater under $45`
+10. `brown leather belt`
+
+## 1. Every request leaves exactly one complete log line
+
+When I send the ten test queries, the no match query
+`designer ballgown size XXS under $5`, and the five bad bodies from criterion
+5 (16 requests in total), `logs/requests.jsonl` gets exactly 16 new lines.
+Each request id sent back to me shows up in exactly one of them, and every one
+of those lines has a value (not missing and not null) for `timestamp`,
+`request_id`, `outcome`, `status_code` and `duration_ms`. Target: 16 of 16 in
+each trial.
+
+**Why this target:** this is the whole point of the extension. A request that
+doesn't leave a line is exactly the kind of failure I'd never find, because it
+only shows up as something missing. 15 of 16 would mean one request
+disappeared, so anything below all of them is a miss. I'm checking the request
+ids and not just the count, because two lines for one request and zero for
+another would still add up to 16.
+
+## 2. A matching query answers in under 8 seconds
+
+For the ten test queries sent one after another, with nothing else hitting the
+server, at least 8 of the 10 have `duration_ms` under 8000 in their log line.
+The first request after starting the server counts like any other, and so
+does any time a request spends waiting on the rate limiter in `generate.py`,
+because the shopper waits for that too. Each trial starts at least 60 seconds
+after the last one finished, so one trial's calls don't eat into the next
+one's per minute limit.
+
+**Why this target:** a shopper waiting on a thrift search would give up
+somewhere around ten seconds. My Milestone 3 session had a median of 5.7
+seconds but 3 of 10 over 10 seconds, so 8 seconds for 8 of 10 is a little
+tighter than what I saw and could really fail. I'm allowing two slow ones
+because both tools call Gemini and I don't control how long Gemini takes, but
+more than two slow ones out of ten would mean a lot of shoppers waiting too
+long. I'm using `duration_ms` (the whole request) and not `agent_ms`, because
+the shopper waits for the whole thing.
+
+## 3. One matching query costs 2 model calls and no more than 600 tokens
+
+For the ten test queries, every log line shows `model_calls` equal to 2, and
+`prompt_tokens + output_tokens` between 1 and 600. Target: 10 of 10 in each
+trial.
+
+**Why this target:** FitFindr should call the model exactly twice per answer,
+once for `suggest_outfit` and once for `create_fit_card`. A 3 would mean a
+retry or a call I didn't know about, and on a paid tier that's money. In
+Milestone 3 the runs used between 412 and 504 tokens, so 600 leaves room for a
+longer listing or a longer caption but would catch a prompt that grew a lot,
+or a retry being counted twice. The lower limit of 1 is there because a 0 on
+an ok run would mean the counting is broken, and then the cost number in my
+README means nothing.
+
+## 4. When the model can't be reached, the caller gets an error code, not a 200
+
+With the server started with a wrong `GEMINI_API_KEY`, sending
+`denim jacket under $50` gets back an HTTP status of 500 or higher, and the
+log line for that request has the same number in `status_code` and an `error`
+that mentions the API key. Target: 3 of 3 requests in each trial.
+
+**Why this target:** without the model FitFindr can find an item but can't
+style it or write a fit card, so the request didn't do its job. Anything that
+only looks at status codes (a host's health check, or me counting 200s in the
+log) would count a broken key as a success. It's 3 of 3 because a broken key
+breaks every request the same way, so there's no reason it should only be
+reported right some of the time.
+
+## 5. Bad input gets a 400 and uses no model calls
+
+Each of these five bodies sent to `/ask` gets status 400 back, with an error
+message that has the word `query` in it, and a log line with `outcome` equal
+to `bad_request`, `model_calls` either 0 or not there at all, and `raw_body`
+showing what was sent:
+
+1. `{}`
+2. `{"query": ""}`
+3. `["vintage", "tee"]` (a list, not an object)
+4. `{"query": 42}` (a number, not text)
+5. `hello` sent as plain text, not JSON
+
+Target: 5 of 5 in each trial.
+
+**Why this target:** these are mistakes someone calling the server would
+really make, and before my change, 3 and 4 crashed `serve.py` with a stack
+trace instead of a 400. A bad request should never get as far as the model,
+because that would be paying for a call that can't produce anything. It's 5 of
+5 because the code that checks these doesn't involve the model at all, so
+there's nothing random about it. If one fails it will fail every time.
