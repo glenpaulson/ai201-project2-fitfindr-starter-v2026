@@ -1,0 +1,174 @@
+
+FitFindr is listening on http://localhost:5000
+It runs one request at a time — a second one waits for the first.
+Ask it something (single quotes, as always):
+
+  curl -X POST http://localhost:5000/ask \
+    -H 'Content-Type: application/json' \
+    -d '{"query": "vintage graphic tee under $30"}'
+
+Ctrl-C to stop.
+
+ * Serving Flask app 'serve'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://10.0.0.84:5000
+Press CTRL+C to quit
+127.0.0.1 - - [15/Nov/2026 16:34:26] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:34:32] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:34:37] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:34:42] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:34:47] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:34:51] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:34:56] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:35:00] "POST /ask HTTP/1.1" 200 -
+  [rate limit] 15 requests used this minute. Waiting 27s. This is normal.
+127.0.0.1 - - [15/Nov/2026 16:35:32] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:35:36] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:35:41] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:35:45] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:35:47] "POST /ask HTTP/1.1" 400 -
+127.0.0.1 - - [15/Nov/2026 16:35:49] "POST /ask HTTP/1.1" 400 -
+127.0.0.1 - - [15/Nov/2026 16:35:51] "POST /ask HTTP/1.1" 400 -
+127.0.0.1 - - [15/Nov/2026 16:35:53] "POST /ask HTTP/1.1" 400 -
+127.0.0.1 - - [15/Nov/2026 16:35:55] "POST /ask HTTP/1.1" 400 -
+
+FitFindr is listening on http://localhost:5000
+It runs one request at a time — a second one waits for the first.
+Ask it something (single quotes, as always):
+
+  curl -X POST http://localhost:5000/ask \
+    -H 'Content-Type: application/json' \
+    -d '{"query": "vintage graphic tee under $30"}'
+
+Ctrl-C to stop.
+
+ * Serving Flask app 'serve'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://10.0.0.84:5000
+Press CTRL+C to quit
+127.0.0.1 - - [15/Nov/2026 16:35:57] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:36:02] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:36:05] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:36:09] "POST /ask HTTP/1.1" 200 -
+
+FitFindr is listening on http://localhost:5000
+It runs one request at a time — a second one waits for the first.
+Ask it something (single quotes, as always):
+
+  curl -X POST http://localhost:5000/ask \
+    -H 'Content-Type: application/json' \
+    -d '{"query": "vintage graphic tee under $30"}'
+
+Ctrl-C to stop.
+
+ * Serving Flask app 'serve'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://10.0.0.84:5000
+Press CTRL+C to quit
+127.0.0.1 - - [15/Nov/2026 16:37:11] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:37:18] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:37:22] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:37:27] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:37:31] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:37:36] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:37:41] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:37:45] "POST /ask HTTP/1.1" 200 -
+  [rate limit] 15 requests used this minute. Waiting 27s. This is normal.
+127.0.0.1 - - [15/Nov/2026 16:38:17] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:38:22] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:38:26] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:38:29] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:38:31] "POST /ask HTTP/1.1" 400 -
+127.0.0.1 - - [15/Nov/2026 16:38:34] "POST /ask HTTP/1.1" 400 -
+127.0.0.1 - - [15/Nov/2026 16:38:36] "POST /ask HTTP/1.1" 400 -
+127.0.0.1 - - [15/Nov/2026 16:38:38] "POST /ask HTTP/1.1" 400 -
+127.0.0.1 - - [15/Nov/2026 16:38:40] "POST /ask HTTP/1.1" 400 -
+
+FitFindr is listening on http://localhost:5000
+It runs one request at a time — a second one waits for the first.
+Ask it something (single quotes, as always):
+
+  curl -X POST http://localhost:5000/ask \
+    -H 'Content-Type: application/json' \
+    -d '{"query": "vintage graphic tee under $30"}'
+
+Ctrl-C to stop.
+
+ * Serving Flask app 'serve'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://10.0.0.84:5000
+Press CTRL+C to quit
+127.0.0.1 - - [15/Nov/2026 16:38:42] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:38:47] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:38:51] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:38:54] "POST /ask HTTP/1.1" 200 -
+
+FitFindr is listening on http://localhost:5000
+It runs one request at a time — a second one waits for the first.
+Ask it something (single quotes, as always):
+
+  curl -X POST http://localhost:5000/ask \
+    -H 'Content-Type: application/json' \
+    -d '{"query": "vintage graphic tee under $30"}'
+
+Ctrl-C to stop.
+
+ * Serving Flask app 'serve'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://10.0.0.84:5000
+Press CTRL+C to quit
+127.0.0.1 - - [15/Nov/2026 16:39:56] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:40:03] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:40:07] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:40:12] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:40:17] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:40:22] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:40:27] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:40:32] "POST /ask HTTP/1.1" 200 -
+  [rate limit] 15 requests used this minute. Waiting 26s. This is normal.
+127.0.0.1 - - [15/Nov/2026 16:41:02] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:41:07] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:41:12] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:41:15] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:41:17] "POST /ask HTTP/1.1" 400 -
+127.0.0.1 - - [15/Nov/2026 16:41:19] "POST /ask HTTP/1.1" 400 -
+127.0.0.1 - - [15/Nov/2026 16:41:21] "POST /ask HTTP/1.1" 400 -
+127.0.0.1 - - [15/Nov/2026 16:41:23] "POST /ask HTTP/1.1" 400 -
+127.0.0.1 - - [15/Nov/2026 16:41:25] "POST /ask HTTP/1.1" 400 -
+
+FitFindr is listening on http://localhost:5000
+It runs one request at a time — a second one waits for the first.
+Ask it something (single quotes, as always):
+
+  curl -X POST http://localhost:5000/ask \
+    -H 'Content-Type: application/json' \
+    -d '{"query": "vintage graphic tee under $30"}'
+
+Ctrl-C to stop.
+
+ * Serving Flask app 'serve'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://10.0.0.84:5000
+Press CTRL+C to quit
+127.0.0.1 - - [15/Nov/2026 16:41:27] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:41:33] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:41:37] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:41:40] "POST /ask HTTP/1.1" 200 -

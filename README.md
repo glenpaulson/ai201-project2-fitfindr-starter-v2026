@@ -1532,6 +1532,123 @@ from a pricing page.
 In money it's $0 right now, because I'm on the Gemini free tier. I'll do the
 dollar version and the hundred people a day arithmetic in Milestone 7.
 
+**Run Log and Verdicts**
+
+The test is `run_capstone.py`. For each trial it starts `python serve.py`
+fresh with `AI201_CACHE=0`, sends the requests from `criteria.md`, stops it,
+starts it again with a wrong API key for criterion 4, and then scores
+everything from the new lines in `logs/requests.jsonl`. I ran it with
+`python run_capstone.py before` on November 15, 2026, three trials in a row
+with 60 seconds between them and nothing changed in between. The full results
+are in `results/capstone_2026-11-15_1634_before.md` and what the server
+printed is in `results/capstone_2026-11-15_1634_before_server.txt`.
+
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. Every request leaves exactly one complete log line | 16 of 16 | 16/16 | 16/16 | 16/16 | MET |
+| 2. A matching query answers in under 8 seconds | 8 of 10 | 9/10 | 9/10 | 9/10 | MET |
+| 3. 2 model calls and 1 to 600 tokens per matching query | 10 of 10 | 10/10 | 10/10 | 10/10 | MET |
+| 4. Wrong API key gets 500 or higher, not 200 | 3 of 3 | 0/3 | 0/3 | 0/3 | MISSED |
+| 5. Bad input gets a 400 and uses no model calls | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+
+The diagnosis for the miss comes in the next part. Below is the real output
+for each criterion from trial 1. Every log line was written by
+`serve.py::ask` through `request_log.py::log_request`, and scored by
+`run_capstone.py::run_trial`.
+
+Criterion 1, every request leaves exactly one complete log line. What
+`run_capstone.py` printed while it sent the 16 requests (status, the request
+id from the response header, what was sent), and the check at the end:
+
+```
+200 464bbe5f  vintage graphic tee under $30
+  200 58f169ae  90s track jacket in size M
+  200 3f76a418  silk slip dress in midi length under $40
+  200 33fddec7  platform sneakers size 8
+  200 c48093a3  denim jacket under $50
+  200 e048de05  black leather jacket under $80
+  200 1e9f8088  baggy jeans size 32
+  200 ec2edeed  cozy oversized hoodie
+  200 670422bf  chunky knit sweater under $45
+  200 8ce77754  brown leather belt
+  200 fc5e75a2  designer ballgown size XXS under $5
+  400 889848b1  bad body {}
+  400 0a7d4151  bad body {"query": ""}
+  400 c75a6c89  bad body ["vintage", "tee"]
+  400 73347b10  bad body {"query": 42}
+  400 b2e7b889  bad body hello
+
+16 log lines for these 16 requests
+criterion 1: 16/16 MET
+```
+
+Criterion 2, under 8 seconds. The `duration_ms` of the ten test queries, in
+order:
+
+```
+duration_ms: [4318, 3067, 2287, 2842, 2472, 2355, 2142, 30209, 2409, 2952]
+```
+
+Nine were under 3.1 seconds. The eighth one, `cozy oversized hoodie`, took 30
+seconds, and it was the eighth one in all three trials (30209, 29653 and 28790
+ms). Its log line:
+
+```
+{"timestamp": "2026-11-15T23:35:32+00:00", "request_id": "ec2edeed", "route": "/ask", "query": "cozy oversized hoodie", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 2, "prompt_tokens": 351, "output_tokens": 129, "agent_ms": 30208, "parsed": {"description": "cozy oversized hoodie", "size": null, "max_price": null}, "num_results": 6, "selected_item_id": "lst_008", "selected_price": 35.0, "fit_card": "Obsessed with this chunky brown knit cardigan! Grab this thrifted gem on my Depop for just $35. Style it with a ribbed tank, baggy jeans, and combat boots for the ultimate cozy fit, or switch to wide-leg trousers for an effortless earth-toned look. ✨🤎", "error": null, "status_code": 200, "outcome": "ok", "duration_ms": 30209}
+```
+
+and what the server printed around it. The rate limit line comes right after
+the seventh request:
+
+```
+Press CTRL+C to quit
+127.0.0.1 - - [15/Nov/2026 16:34:26] "GET /health HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:34:32] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:34:37] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:34:42] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:34:47] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:34:51] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:34:56] "POST /ask HTTP/1.1" 200 -
+127.0.0.1 - - [15/Nov/2026 16:35:00] "POST /ask HTTP/1.1" 200 -
+  [rate limit] 15 requests used this minute. Waiting 27s. This is normal.
+127.0.0.1 - - [15/Nov/2026 16:35:32] "POST /ask HTTP/1.1" 200 -
+```
+
+Criterion 3, model calls and tokens for the ten test queries:
+
+```
+2 calls / 472 tok; 2 calls / 518 tok; 2 calls / 513 tok; 2 calls / 419 tok; 2 calls / 477 tok; 2 calls / 467 tok; 2 calls / 456 tok; 2 calls / 480 tok; 2 calls / 496 tok; 2 calls / 412 tok
+```
+
+One of those lines in full:
+
+```
+{"timestamp": "2026-11-15T23:34:32+00:00", "request_id": "464bbe5f", "route": "/ask", "query": "vintage graphic tee under $30", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 2, "prompt_tokens": 353, "output_tokens": 119, "agent_ms": 4318, "parsed": {"description": "vintage graphic tee", "size": null, "max_price": 30.0}, "num_results": 10, "selected_item_id": "lst_002", "selected_price": 18.0, "fit_card": "Obsessed with this Y2K baby tee with the cutest butterfly print! Score it for just $18.0 on depop before I change my mind and keep it. Go check out my page for all the details on how to style it!", "error": null, "status_code": 200, "outcome": "ok", "duration_ms": 4318}
+```
+
+Criterion 4, wrong API key. All three came back 200, so 0 of 3. The three log
+lines:
+
+```
+{"timestamp": "2026-11-15T23:36:02+00:00", "request_id": "9bc89b37", "route": "/ask", "query": "denim jacket under $50", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 1, "prompt_tokens": 0, "output_tokens": 0, "agent_ms": 3336, "parsed": {"description": "denim jacket", "size": null, "max_price": 50.0}, "num_results": 7, "selected_item_id": "lst_007", "selected_price": 42.0, "fit_card": null, "error": "I found Denim Jacket — Light Wash, Cropped for $42.0 on poshmark, but I couldn't reach the model to style it, so there is no outfit or fit card. The model said: The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com. Once that is sorted, run the same query again.", "status_code": 200, "outcome": "stopped", "duration_ms": 3337}
+{"timestamp": "2026-11-15T23:36:05+00:00", "request_id": "93915b68", "route": "/ask", "query": "denim jacket under $50", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 1, "prompt_tokens": 0, "output_tokens": 0, "agent_ms": 1148, "parsed": {"description": "denim jacket", "size": null, "max_price": 50.0}, "num_results": 7, "selected_item_id": "lst_007", "selected_price": 42.0, "fit_card": null, "error": "I found Denim Jacket — Light Wash, Cropped for $42.0 on poshmark, but I couldn't reach the model to style it, so there is no outfit or fit card. The model said: The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com. Once that is sorted, run the same query again.", "status_code": 200, "outcome": "stopped", "duration_ms": 1149}
+{"timestamp": "2026-11-15T23:36:09+00:00", "request_id": "5a2e1a13", "route": "/ask", "query": "denim jacket under $50", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 1, "prompt_tokens": 0, "output_tokens": 0, "agent_ms": 1187, "parsed": {"description": "denim jacket", "size": null, "max_price": 50.0}, "num_results": 7, "selected_item_id": "lst_007", "selected_price": 42.0, "fit_card": null, "error": "I found Denim Jacket — Light Wash, Cropped for $42.0 on poshmark, but I couldn't reach the model to style it, so there is no outfit or fit card. The model said: The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com. Once that is sorted, run the same query again.", "status_code": 200, "outcome": "stopped", "duration_ms": 1188}
+```
+
+Criterion 5, bad input. The five log lines, in the same order as the list in
+`criteria.md`:
+
+```
+{"timestamp": "2026-11-15T23:35:47+00:00", "request_id": "889848b1", "route": "/ask", "status_code": 400, "outcome": "bad_request", "query": null, "raw_body": "{}", "error": "Send JSON with a 'query' field, e.g. {\"query\": \"vintage graphic tee under $30\"}", "duration_ms": 0}
+{"timestamp": "2026-11-15T23:35:49+00:00", "request_id": "0a7d4151", "route": "/ask", "status_code": 400, "outcome": "bad_request", "query": null, "raw_body": "{\"query\": \"\"}", "error": "Send JSON with a 'query' field, e.g. {\"query\": \"vintage graphic tee under $30\"}", "duration_ms": 0}
+{"timestamp": "2026-11-15T23:35:51+00:00", "request_id": "c75a6c89", "route": "/ask", "status_code": 400, "outcome": "bad_request", "query": null, "raw_body": "[\"vintage\", \"tee\"]", "error": "Send JSON with a 'query' field, e.g. {\"query\": \"vintage graphic tee under $30\"}", "duration_ms": 0}
+{"timestamp": "2026-11-15T23:35:53+00:00", "request_id": "73347b10", "route": "/ask", "status_code": 400, "outcome": "bad_request", "query": null, "raw_body": "{\"query\": 42}", "error": "Send JSON with a 'query' field, e.g. {\"query\": \"vintage graphic tee under $30\"}", "duration_ms": 0}
+{"timestamp": "2026-11-15T23:35:55+00:00", "request_id": "b2e7b889", "route": "/ask", "status_code": 400, "outcome": "bad_request", "query": null, "raw_body": "hello", "error": "Send JSON with a 'query' field, e.g. {\"query\": \"vintage graphic tee under $30\"}", "duration_ms": 0}
+```
+
+Every response to those five was a 400 with `"Send JSON with a 'query' field"`
+in the error, which `run_capstone.py` checked from the response body.
+
 ---
 
 📖 **How to run this project: [RUNNING.md](RUNNING.md)**
