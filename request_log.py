@@ -9,9 +9,15 @@ logs/requests.jsonl and it only ever gets appended to.
     log_request({"query": "...", "outcome": "ok", "duration_ms": 1234})
 
 The timestamp gets added for you.
+
+To look at the log afterwards without writing any new code:
+
+    python request_log.py          summary + the last 10 requests
+    python request_log.py 25       summary + the last 25
 """
 
 import json
+import sys
 from datetime import datetime, timezone
 
 import config
@@ -53,9 +59,50 @@ def read_log() -> list[dict]:
     return records
 
 
+def summary(records: list[dict]) -> str:
+    """A few lines on what's in the log: how many of each outcome, and averages."""
+    if not records:
+        return "no requests logged yet"
+
+    lines = [f"{len(records)} requests in {LOG_FILE}"]
+
+    # how many of each outcome (ok, stopped, bad_request, crash)
+    counts = {}
+    for r in records:
+        outcome = r.get("outcome", "unknown")
+        counts[outcome] = counts.get(outcome, 0) + 1
+    lines.append("  outcomes: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
+
+    # averages only over the ok ones, since a 400 takes 0 ms and uses no tokens
+    # and would drag the average down
+    ok = [r for r in records if r.get("outcome") == "ok"]
+    if ok:
+        avg_ms = sum(r.get("duration_ms", 0) for r in ok) / len(ok)
+        avg_calls = sum(r.get("model_calls", 0) for r in ok) / len(ok)
+        avg_prompt = sum(r.get("prompt_tokens", 0) for r in ok) / len(ok)
+        avg_output = sum(r.get("output_tokens", 0) for r in ok) / len(ok)
+        slowest = max(r.get("duration_ms", 0) for r in ok)
+        lines.append(f"  ok requests: {len(ok)}")
+        lines.append(f"    avg duration {avg_ms:.0f} ms, slowest {slowest} ms")
+        lines.append(f"    avg model calls {avg_calls:.1f}")
+        lines.append(f"    avg tokens {avg_prompt:.0f} prompt + {avg_output:.0f} output")
+    return "\n".join(lines)
+
+
 if __name__ == "__main__":
-    # quick check: python request_log.py writes a test line and reads it back
-    log_request({"route": "test", "query": "just checking the log works"})
+    how_many = 10
+    if len(sys.argv) > 1:
+        how_many = int(sys.argv[1])
+
     rows = read_log()
-    print(f"{len(rows)} records in {LOG_FILE}")
-    print(rows[-1])
+    print(summary(rows))
+    if rows:
+        print(f"\nlast {min(how_many, len(rows))}:")
+        for r in rows[-how_many:]:
+            print(
+                f"  {r.get('timestamp')}  {r.get('request_id')}  "
+                f"{r.get('status_code')} {str(r.get('outcome')):<11}  "
+                f"{r.get('duration_ms')} ms  "
+                f"{r.get('prompt_tokens', 0)}+{r.get('output_tokens', 0)} tok  "
+                f"{r.get('query')!r}"
+            )
