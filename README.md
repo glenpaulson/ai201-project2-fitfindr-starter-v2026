@@ -1393,6 +1393,145 @@ What's out of scope:
 3. I'm not hosting it anywhere (no Path A), and I'm not turning the one
    request at a time lock in `serve.py` into a real queue.
 
+**Running It**
+
+Path B, local with logs. Everything is in [RUNNING.md](RUNNING.md) under
+"Capstone: how I run it". The short version is one command:
+
+```bash
+python serve.py
+```
+
+and then you send it requests on `http://localhost:5000/ask`. Every request
+gets one line in `logs/requests.jsonl`, and `python request_log.py` reads them
+back.
+
+How I checked the instructions: I cloned the repo into a brand new folder,
+made a new venv, installed `requirements.txt` with pip, copied `.env.example`
+to `.env`, put my key in plus `AI201_CACHE=0`, and followed RUNNING.md from
+the top. `python test.py` said 10 passed, the server started, and both the
+curl command and the PowerShell `Invoke-RestMethod` command got an answer
+back. Nothing was missing, which honestly surprised me a bit.
+
+One thing I did differently for the real session below: my own `.env` didn't
+have the `AI201_CACHE=0` line in it, so I started the server with
+`AI201_CACHE=0` set in the terminal instead. Same effect, and every line in
+the log says `"cache_enabled": false` so you can see it was off.
+
+**Instrumentation**
+
+Every call to `/ask` writes one JSON object on one line to
+`logs/requests.jsonl`. The code that writes it is `request_log.py::log_request`
+and it gets called from `serve.py::ask`. A line gets written for every
+outcome, including the ones that fail, before the response goes back.
+
+What each record holds:
+
+1. `timestamp`, in UTC, and a `request_id` (8 characters). The same id comes
+   back to the caller in an `X-Request-Id` header, so you can find the line
+   for a request you sent.
+2. `query`, what came in. For a bad request this is `null` and `raw_body`
+   holds the first 200 characters of what was actually sent instead.
+3. What went out: `outcome` (`ok`, `stopped`, `bad_request` or `crash`),
+   `status_code`, `selected_item_id`, `selected_price`, `fit_card` and
+   `error`.
+4. How long it took: `duration_ms` for the whole request, and `agent_ms` for
+   just the `run_agent` part.
+5. What it cost: `model_calls`, `prompt_tokens` and `output_tokens`, for this
+   request only.
+6. Things specific to FitFindr that I wanted to be able to look up later:
+   `parsed` (what `parse_query` pulled out of the query), `num_results` (how
+   many listings the search found), `used_example_wardrobe`,
+   `waited_for_lock` and `cache_enabled`.
+
+`outcome` is there because the agent answers 200 even when it stopped early
+(no matches, or the model couldn't be reached). Without it those would look
+like normal successes in the log.
+
+This is the whole log from my real session on November 15, 2026, all 17 requests.
+The first 10 are the ones I measured cost from. After those: a search with no
+match, four bad requests (empty object, empty query, a list instead of an
+object, a number as the query), one with a wardrobe that was a string, and
+then the last one is a real model failure, where I restarted the server with
+a wrong API key on purpose.
+
+Summary from `python request_log.py 0`:
+
+```
+17 requests in logs\requests.jsonl
+  outcomes: ok 11, stopped 2, bad_request 4
+  ok requests: 11
+    avg duration 7626 ms, slowest 21439 ms
+    avg model calls 2.0
+    avg tokens 355 prompt + 132 output
+```
+
+The raw lines from `logs/requests.jsonl`:
+
+```
+{"timestamp": "2026-11-15T23:19:03+00:00", "request_id": "709cbc31", "route": "/ask", "query": "vintage graphic tee under $30", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 2, "prompt_tokens": 360, "output_tokens": 147, "agent_ms": 5733, "parsed": {"description": "vintage graphic tee", "size": null, "max_price": 30.0}, "num_results": 10, "selected_item_id": "lst_002", "selected_price": 18.0, "fit_card": "Look at this absolute dream of a Y2K baby tee with the cutest butterfly print I just scored! It’s only $18.00 over on my Depop shop, so you definitely need to grab it before it's gone. Head over to my profile to snag it and start styling it with all your fave baggy jeans! ✨🦋", "error": null, "status_code": 200, "outcome": "ok", "duration_ms": 5734}
+{"timestamp": "2026-11-15T23:19:06+00:00", "request_id": "4bcf006c", "route": "/ask", "query": "90s track jacket in size M", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 2, "prompt_tokens": 357, "output_tokens": 123, "agent_ms": 3358, "parsed": {"description": "90s track jacket in", "size": "M", "max_price": null}, "num_results": 4, "selected_item_id": "lst_004", "selected_price": 45.0, "fit_card": "Scored this ultra-cool 90s Track Jacket on Poshmark for just $45! Layer it over a white ribbed tank with baggy jeans and chunky sneakers for the ultimate effortless sporty look. Such a fun piece to style for everyday streetwear! ✨👟", "error": null, "status_code": 200, "outcome": "ok", "duration_ms": 3359}
+{"timestamp": "2026-11-15T23:19:09+00:00", "request_id": "3f007384", "route": "/ask", "query": "silk slip dress in midi length under $40", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 2, "prompt_tokens": 354, "output_tokens": 137, "agent_ms": 2856, "parsed": {"description": "silk slip dress in midi length", "size": null, "max_price": 40.0}, "num_results": 7, "selected_item_id": "lst_013", "selected_price": 30.0, "fit_card": "Obsessed with this 90s floral silk slip dress I just scored for only $30! I'm already planning to layer it over a white tee with chunky sneakers, or throw on an oversized crewneck and combat boots for that effortless vintage grunge vibe. Head over to my Depop to grab this gorgeous midi before I change my mind and keep it for myself! 🌸✨", "error": null, "status_code": 200, "outcome": "ok", "duration_ms": 2857}
+{"timestamp": "2026-11-15T23:19:15+00:00", "request_id": "766655f9", "route": "/ask", "query": "platform sneakers size 8", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 2, "prompt_tokens": 356, "output_tokens": 135, "agent_ms": 5718, "parsed": {"description": "platform sneakers", "size": "8", "max_price": null}, "num_results": 1, "selected_item_id": "lst_019", "selected_price": 48.0, "fit_card": "Look at these white chunky sole platform sneakers I just scored! They were a steal at only $48.0 on Poshmark, and I am already obsessed with them. I can't wait to style them with baggy jeans and a vintage jacket for the ultimate off-duty look!", "error": null, "status_code": 200, "outcome": "ok", "duration_ms": 5719}
+{"timestamp": "2026-11-15T23:19:26+00:00", "request_id": "3f3511de", "route": "/ask", "query": "denim jacket under $50", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 2, "prompt_tokens": 337, "output_tokens": 131, "agent_ms": 10835, "parsed": {"description": "denim jacket", "size": null, "max_price": 50.0}, "num_results": 7, "selected_item_id": "lst_007", "selected_price": 42.0, "fit_card": "Scored this dreamy light wash, cropped Denim Jacket for just $42.0 on Poshmark! Throw it over a ribbed tank and wide-leg trousers for the ultimate off-duty look, or layer it with a black hoodie and combat boots for instant streetwear edge. Run, don't walk, because this piece is too good to miss!", "error": null, "status_code": 200, "outcome": "ok", "duration_ms": 10836}
+{"timestamp": "2026-11-15T23:19:42+00:00", "request_id": "d2882c0a", "route": "/ask", "query": "black leather jacket under $80", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 2, "prompt_tokens": 360, "output_tokens": 129, "agent_ms": 15596, "parsed": {"description": "black leather jacket", "size": null, "max_price": 80.0}, "num_results": 10, "selected_item_id": "lst_022", "selected_price": 75.0, "fit_card": "Obsessed is an understatement! Just scored this ultimate 90s Leather Bomber for only $75.0 on Depop, and I am already planning every outfit. Grab it from my shop before I change my mind and keep it for myself!", "error": null, "status_code": 200, "outcome": "ok", "duration_ms": 15597}
+{"timestamp": "2026-11-15T23:20:03+00:00", "request_id": "3e876afe", "route": "/ask", "query": "baggy jeans size 32", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 2, "prompt_tokens": 370, "output_tokens": 134, "agent_ms": 21438, "parsed": {"description": "baggy jeans", "size": "32", "max_price": null}, "num_results": 1, "selected_item_id": "lst_031", "selected_price": 36.0, "fit_card": "Obsessed with these dark wash baggy carpenter jeans I just scored! Snag them on my Depop for just $36.00 to instantly level up your 90s streetwear game. Trust me, your rotation needs these!", "error": null, "status_code": 200, "outcome": "ok", "duration_ms": 21439}
+{"timestamp": "2026-11-15T23:20:08+00:00", "request_id": "2f7dcb4f", "route": "/ask", "query": "cozy oversized hoodie", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 2, "prompt_tokens": 359, "output_tokens": 131, "agent_ms": 4549, "parsed": {"description": "cozy oversized hoodie", "size": null, "max_price": null}, "num_results": 6, "selected_item_id": "lst_008", "selected_price": 35.0, "fit_card": "Found my ultimate fall staple with this gorgeous chunky brown knit cardigan! Grab it over on my Depop for just $35.00 before I change my mind and keep it. It's giving major cozy vibes and is ready for all your best transitional layering!", "error": null, "status_code": 200, "outcome": "ok", "duration_ms": 4549}
+{"timestamp": "2026-11-15T23:20:16+00:00", "request_id": "16657509", "route": "/ask", "query": "chunky knit sweater under $45", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 2, "prompt_tokens": 358, "output_tokens": 141, "agent_ms": 7626, "parsed": {"description": "chunky knit sweater", "size": null, "max_price": 45.0}, "num_results": 2, "selected_item_id": "lst_008", "selected_price": 35.0, "fit_card": "Obsessed with this cozy chunky brown knit cardigan I just manifested for $35! Throw it over a ribbed tank and baggy jeans for the ultimate earthy vibe, or style it with khaki trousers for pure cottagecore magic. Snag this beauty now over on my Depop before I change my mind and keep it! ✨🤎", "error": null, "status_code": 200, "outcome": "ok", "duration_ms": 7626}
+{"timestamp": "2026-11-15T23:20:19+00:00", "request_id": "f2567b23", "route": "/ask", "query": "brown leather belt", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 2, "prompt_tokens": 316, "output_tokens": 96, "agent_ms": 3651, "parsed": {"description": "brown leather belt", "size": null, "max_price": null}, "num_results": 7, "selected_item_id": "lst_014", "selected_price": 12.0, "fit_card": "Scored this gorgeous brown, braided leather belt on thredUp for just $12.0! I'm already planning to wear it with wide-leg khaki trousers, a white ribbed tank, and chunky sneakers for the ultimate earthy, casual fit. Thrift magic is real!", "error": null, "status_code": 200, "outcome": "ok", "duration_ms": 3652}
+{"timestamp": "2026-11-15T23:20:20+00:00", "request_id": "47ba1883", "route": "/ask", "query": "designer ballgown size XXS under $5", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 0, "prompt_tokens": 0, "output_tokens": 0, "agent_ms": 1039, "parsed": {"description": "designer ballgown", "size": "XXS", "max_price": 5.0}, "num_results": 0, "selected_item_id": null, "selected_price": null, "fit_card": null, "error": "I couldn't find anything for \"designer ballgown size XXS under $5\". Try removing the price limit, using a different size, or simpler keywords.", "status_code": 200, "outcome": "stopped", "duration_ms": 1040}
+{"timestamp": "2026-11-15T23:20:20+00:00", "request_id": "8ac74683", "route": "/ask", "status_code": 400, "outcome": "bad_request", "query": null, "raw_body": "{}", "error": "Send JSON with a 'query' field, e.g. {\"query\": \"vintage graphic tee under $30\"}", "duration_ms": 0}
+{"timestamp": "2026-11-15T23:20:21+00:00", "request_id": "80a07960", "route": "/ask", "status_code": 400, "outcome": "bad_request", "query": null, "raw_body": "{\"query\": \"\"}", "error": "Send JSON with a 'query' field, e.g. {\"query\": \"vintage graphic tee under $30\"}", "duration_ms": 0}
+{"timestamp": "2026-11-15T23:20:21+00:00", "request_id": "76c5cc31", "route": "/ask", "status_code": 400, "outcome": "bad_request", "query": null, "raw_body": "[\"vintage\", \"tee\"]", "error": "Send JSON with a 'query' field, e.g. {\"query\": \"vintage graphic tee under $30\"}", "duration_ms": 0}
+{"timestamp": "2026-11-15T23:20:21+00:00", "request_id": "77858638", "route": "/ask", "status_code": 400, "outcome": "bad_request", "query": null, "raw_body": "{\"query\": 42}", "error": "Send JSON with a 'query' field, e.g. {\"query\": \"vintage graphic tee under $30\"}", "duration_ms": 0}
+{"timestamp": "2026-11-15T23:20:23+00:00", "request_id": "77f42c13", "route": "/ask", "query": "red beanie", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 2, "prompt_tokens": 373, "output_tokens": 143, "agent_ms": 2515, "parsed": {"description": "red beanie", "size": null, "max_price": null}, "num_results": 9, "selected_item_id": "lst_003", "selected_price": 22.0, "fit_card": "Scored this amazing oversized flannel shirt on thredUp for just $22.0! It’s giving total 90s grunge vibes, and I can't wait to layer it over a white tank with chunky combat boots. Thrift gods definitely blessed me with this one!", "error": null, "status_code": 200, "outcome": "ok", "duration_ms": 2516}
+{"timestamp": "2026-11-15T23:20:48+00:00", "request_id": "d20e3e62", "route": "/ask", "query": "denim jacket under $50", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 1, "prompt_tokens": 0, "output_tokens": 0, "agent_ms": 3291, "parsed": {"description": "denim jacket", "size": null, "max_price": 50.0}, "num_results": 7, "selected_item_id": "lst_007", "selected_price": 42.0, "fit_card": null, "error": "I found Denim Jacket — Light Wash, Cropped for $42.0 on poshmark, but I couldn't reach the model to style it, so there is no outfit or fit card. The model said: The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com. Once that is sorted, run the same query again.", "status_code": 200, "outcome": "stopped", "duration_ms": 3292}
+```
+
+What the log already showed me that I didn't know before:
+
+1. Some requests are really slow. `baggy jeans size 32` took 21.4 seconds and
+   `black leather jacket under $80` took 15.6, while others took under 3. The
+   server printed no rate limit waits, so it was the model calls themselves.
+   The log only has the total time though, so I can't tell from it whether it
+   was `suggest_outfit` or `create_fit_card` that was slow.
+2. A wrong API key comes back as status 200, not an error code. The log
+   catches it as `"outcome": "stopped"` with `model_calls` 1 and 0 tokens, but
+   anything that only looked at status codes would think it worked.
+3. It picks wrong items and still says `ok`. `cozy oversized hoodie` got a
+   knit cardigan (`lst_008`) and `red beanie` got a flannel shirt
+   (`lst_003`). That's the same keyword scoring problem from unit 4 and it's
+   out of scope, but now I can see it in the log instead of only in a test.
+
+**What It Costs**
+
+Measured from the first 10 requests in the log above. They're all `ok` and
+all have `cache_enabled` false, so every one was a real model call.
+
+1. **Model calls:** 2 per run, every single time (`suggest_outfit` and
+   `create_fit_card`). `search_listings` doesn't use the model.
+2. **Tokens:** 3527 prompt and 1304 output across the 10 runs, so on average
+   **352.7 prompt + 130.4 output = 483.1 tokens per run**. The smallest run
+   was 316 + 96 (`brown leather belt`) and the biggest was 370 + 134
+   (`baggy jeans size 32`).
+3. **Time:** 81,368 ms across the 10 runs, so **8.1 seconds per run on
+   average**. The median is 5.7 seconds, because three slow ones pull the
+   average up. The fastest was 2.9 seconds and the slowest 21.4.
+4. Runs that stop early cost almost nothing. No match was 0 model calls, a
+   bad request was 0, and the wrong key run was 1 call that got rejected with
+   0 tokens.
+
+How I measured it: Gemini reports token counts on every response
+(`usage_metadata.prompt_token_count` and `candidates_token_count`), and
+`generate.py` adds them to a running total for the whole process.
+`serve.py::ask` reads that total right before `run_agent` and right after,
+and logs the difference, so it's exactly what that one request used. The
+averages are the log numbers added up and divided by 10. None of it comes
+from a pricing page.
+
+In money it's $0 right now, because I'm on the Gemini free tier. I'll do the
+dollar version and the hundred people a day arithmetic in Milestone 7.
+
 ---
 
 📖 **How to run this project: [RUNNING.md](RUNNING.md)**

@@ -155,6 +155,114 @@ the point of the session.
 
 ---
 
+## Capstone: how I run it (Path B, local with logs)
+
+I didn't host this anywhere. It runs on my own machine as a server, and every
+request it gets is written to `logs/requests.jsonl`. This section is
+everything someone else would need to do the same from a fresh clone.
+
+### What the environment needs
+
+1. **Python:** 3.13.7 on Windows 11. The requirements say 3.11, 3.12 or 3.13
+   work, but not 3.14.
+2. **Packages:** whatever `requirements.txt` installs (it pins a low and a
+   high version for each). On my machine that came out as `flask` 3.1.3,
+   `google.genai` 1.75.0, `mcp` 1.30.0, `dotenv` 1.1.1 and `gunicorn` 23.0.0.
+3. **Model files:** none. The model is Gemini 3.5 Flash Lite over the API, so
+   nothing gets downloaded. The only data is `data/listings.json` (40
+   listings) and `data/wardrobe_schema.json`.
+4. **API key:** `GEMINI_API_KEY` in `.env`, the same one from unit 1.
+5. **Memory:** small. It's one Flask process plus one short MCP process per
+   search.
+
+### Set up (once)
+
+Windows PowerShell:
+
+```powershell
+git clone https://github.com/glenpaulson/ai201-project2-fitfindr-starter-v2026.git
+cd ai201-project2-fitfindr-starter-v2026
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env
+```
+
+macOS / Linux:
+
+```bash
+git clone https://github.com/glenpaulson/ai201-project2-fitfindr-starter-v2026.git
+cd ai201-project2-fitfindr-starter-v2026
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+```
+
+Then open `.env`, paste your key in after `GEMINI_API_KEY=`, and also add this
+line so every request is a real model call and not a cached one:
+
+```
+AI201_CACHE=0
+```
+
+With the cache on, asking the same thing twice gives back the saved answer and
+uses zero tokens, which makes the cost numbers in the log wrong. The log
+records `cache_enabled` on every line so you can tell which kind of run it was.
+
+Check it worked:
+
+```bash
+python test.py
+```
+
+It should end with `10 passed, 0 failed`.
+
+### Start it (this is the one command)
+
+```bash
+python serve.py
+```
+
+It prints `FitFindr is listening on http://localhost:5000` and then waits.
+Leave that terminal open.
+
+### Send it something
+
+Open a second terminal (activate the venv again if you want, it doesn't
+matter for this part).
+
+PowerShell (use `Invoke-RestMethod`, because plain `curl` in Windows
+PowerShell is not the real curl):
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:5000/ask -ContentType 'application/json' -Body '{"query": "vintage graphic tee under $30"}'
+```
+
+macOS / Linux, or Git Bash on Windows:
+
+```bash
+curl -X POST http://localhost:5000/ask -H 'Content-Type: application/json' -d '{"query": "vintage graphic tee under $30"}'
+```
+
+Single quotes around the body, always, or `$30` disappears.
+
+### Read the log back
+
+```bash
+python request_log.py
+```
+
+That prints how many requests there were, how many of each outcome (`ok`,
+`stopped`, `bad_request`, `crash`), the average time and tokens for the ok
+ones, and the last 10 requests. `python request_log.py 25` shows the last 25.
+The raw file is `logs/requests.jsonl`, one JSON object per line.
+
+Stop the server with Ctrl+C. The log stays where it is and the next run adds
+to the end of it.
+
+---
+
 ## Where everything lives
 
 | File | What it does |

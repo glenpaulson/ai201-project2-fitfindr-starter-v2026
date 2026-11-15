@@ -96,7 +96,9 @@ if __name__ == "__main__":
 
     rows = read_log()
     print(summary(rows))
-    if rows:
+    # rows[-0:] is the whole list in python, not an empty one, so 0 has to be
+    # checked on its own (python request_log.py 0 means summary only)
+    if rows and how_many > 0:
         print(f"\nlast {min(how_many, len(rows))}:")
         for r in rows[-how_many:]:
             print(
