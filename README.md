@@ -1354,4 +1354,45 @@ answer is any good, and that is the one still missing its target.
 
 ---
 
+## Capstone
+
+**What This Extends**
+
+I'm extending FitFindr, my project from units 3 and 4. It's the thrift
+shopping agent where you type something like 'vintage graphic tee under $30',
+it searches the 40 listings, picks one, suggests an outfit from your wardrobe
+and writes a fit card. I picked this one because it's the system I know the
+weak spots of best (the keyword score ties and the size filter from unit 4),
+and because it already has a `serve.py` that runs the agent over HTTP but
+doesn't record anything about what happened.
+
+What's new this unit: every request to `serve.py` now leaves a record behind
+in a log file, so I can go back and see what came in, what went out, how long
+it took and what it cost.
+
+**The Shape**
+
+Shape A, deploy and instrument. Right now if FitFindr is running as a server
+and something goes wrong, the only evidence is whatever got printed in the
+terminal, and that's gone as soon as I close it. I'm adding structured logging
+to `serve.py` so every call to `/ask` writes one JSON line to
+`logs/requests.jsonl` with the time, the query, what came back (the item it
+picked, or the error), how long it took in milliseconds, and how many model
+calls and tokens it used. Requests that fail (an empty query, a search with no
+matches, the model not being reachable) get a line too, not just the ones that
+work. I'm taking Path B, running it locally with logs, because the free host
+asks for a card and the brief says Path B is worth the same.
+
+What's out of scope:
+
+1. I'm not fixing the search scoring. Criterion 1 from unit 4 is still broken
+   (ties go to whichever listing comes first in the file), and it stays in
+   What's Still Broken where I already wrote it up.
+2. I'm not changing any of the three tools or their prompts. If the log shows
+   a bad answer I'll write it down, not go fix the tool.
+3. I'm not hosting it anywhere (no Path A), and I'm not turning the one
+   request at a time lock in `serve.py` into a real queue.
+
+---
+
 📖 **How to run this project: [RUNNING.md](RUNNING.md)**
