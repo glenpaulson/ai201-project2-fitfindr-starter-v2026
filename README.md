@@ -1529,8 +1529,54 @@ and logs the difference, so it's exactly what that one request used. The
 averages are the log numbers added up and divided by 10. None of it comes
 from a pricing page.
 
-In money it's $0 right now, because I'm on the Gemini free tier. I'll do the
-dollar version and the hundred people a day arithmetic in Milestone 7.
+In money it's $0 right now, because I'm on the Gemini free tier. Here's what
+it would be on the paid tier.
+
+After Milestones 5 and 6 I had a lot more real runs in the same log, so I
+redid the average over all of them: every line with `"outcome": "ok"` and
+`"cache_enabled": false`, which is 71 runs (the 10 above, the red beanie one,
+and 60 from the six trials). That came out to **347.5 prompt + 122.5 output =
+470.0 tokens per run**, always 2 model calls, between 405 and 556 tokens. So
+the first ten runs were a little high but close.
+
+Google's pricing page for Gemini 3.5 Flash Lite on the paid tier says $0.30
+per 1M input tokens and $2.50 per 1M output tokens, and that output includes
+"thinking" tokens. My counter in `generate.py` only adds up
+`prompt_token_count` and `candidates_token_count`, so I checked whether I was
+missing thinking tokens. I made one real call and printed the whole
+`usage_metadata`: `prompt 10 candidates 17 thoughts None total 27`. No
+thinking tokens, and prompt plus candidates equals the total, so the log
+isn't leaving anything out.
+
+One run:
+
+```
+input:   347.5 tokens x $0.30 / 1,000,000 = $0.0001042
+output:  122.5 tokens x $2.50 / 1,000,000 = $0.0003063
+total                                      = $0.0004105 per run
+```
+
+**If a hundred people used it a day, each doing one search, it would cost
+about 4 cents a day, or about $1.23 a month:**
+
+```
+100 runs x $0.0004105 = $0.041 a day
+$0.041 x 30 days      = $1.23 a month
+100 runs x 470 tokens = 47,000 tokens a day, and 200 model calls a day
+```
+
+Output is only about a quarter of the tokens but it's three quarters of the
+money, because it's over eight times the price per token. So if I ever had to
+make this cheaper, a shorter outfit suggestion or fit card would save more
+than a shorter prompt.
+
+The money isn't really the limit though. The rate limit is. The free tier
+lets 15 model calls through a minute, which is 7 answers a minute, and my
+criterion 2 runs showed the eighth one in a minute waits about 27 seconds. A
+hundred people spread over a day is fine. A hundred people arriving in the
+same few minutes would mean most of them waiting. I also didn't check how
+many requests a day the free tier allows, so I don't know if 200 calls a day
+fits in it.
 
 **Run Log and Verdicts**
 
@@ -1649,9 +1695,7 @@ Criterion 5, bad input. The five log lines, in the same order as the list in
 Every response to those five was a 400 with `"Send JSON with a 'query' field"`
 in the error, which `run_capstone.py` checked from the response body.
 
-**Verdicts and diagnosis**
-
-Against the targets I set in `criteria.md`:
+The verdicts, against the targets I set in `criteria.md`:
 
 1. Criterion 1, one complete log line per request: **MET**, 16 of 16 in all
    three trials.
@@ -1797,6 +1841,91 @@ The highest before run was 518, but in the after run one query used 556 tokens
 too tight. The token count moves more between runs than my first ten runs
 showed, because the model's outfit text goes into the fit card prompt and that
 text is different every time.
+
+**What's Still Broken**
+
+After the improvement all five criteria are met, so there's no criterion
+still missing. That doesn't mean nothing is broken. It mostly means some of my
+targets were easy.
+
+The target I'd tighten is criterion 2. It says 8 of 10 under 8 seconds and I
+got 9 of 10 every time, but the one slow request was slow for a reason that
+will always happen: every eighth answer in a minute waits about 27 seconds on
+the rate limit. I'd tighten it to **10 of 10 under 8 seconds, with the ten
+queries sent one after another**. That would have missed in all six trials,
+which is the honest result, because a shopper who lands on the slow one waits
+30 seconds no matter how fast the other nine were. What I'd do about it: have
+`serve.py` say "busy, try again in a moment" with a 429 when the next model
+call would have to wait, instead of holding the request open for half a
+minute. I stopped before doing that because the brief allows one improvement,
+and I used it on criterion 4, which was an actual miss.
+
+Other things I know are still wrong, that none of my criteria catch:
+
+1. **The log can't tell me which step was slow.** It has `duration_ms` and
+   `agent_ms`, but not how long `search_listings`, `suggest_outfit` and
+   `create_fit_card` each took. I only found out the 30 second request was
+   the rate limit because I went and read the server's terminal output,
+   which is exactly what the log was supposed to save me from doing.
+2. **It still picks the wrong item sometimes and logs it as `ok`.** `cozy
+   oversized hoodie` gets a knit cardigan and `red beanie` gets a flannel
+   shirt. That's the keyword scoring problem from unit 4, and I said in The
+   Shape that fixing it was out of scope.
+3. **The log grows forever.** `logs/requests.jsonl` is append only and
+   nothing ever rotates or trims it. It's 131 lines now, which is fine, but a
+   real server running for months would need something.
+4. **A crash still only shows up as a 500 with the exception name.** The
+   `crash` outcome works (I tested it in Milestone 2 by making `run_agent`
+   raise), but none of my five criteria ran it, so it isn't part of the
+   measured results.
+
+I didn't cut anything from what I planned in The Shape. Everything in it got
+built.
+
+**What I'd do next, with another unit:** I'd add a time for each step to the
+log line, like `search_ms`, `outfit_ms` and `fit_card_ms`. Every other problem
+on this list is easier to find and fix once the log can tell me where the time
+went, and the 30 second request showed that it's the first question I end up
+asking.
+
+**How I Used AI**
+
+I used Claude (the AI assistant in Claude Code) for this whole capstone. It
+read the brief, wrote the code (`request_log.py`, the logging and the 503 in
+`serve.py`, the `error_kind` field in `agent.py`, and `run_capstone.py`), ran
+the tests, and drafted every section under this Capstone heading and the
+Capstone part of RUNNING.md. I went one milestone at a time: it stopped after
+each one, I read what it had done, and I made every commit myself.
+
+**Moment 1: picking the system and the repo.** I gave Claude the brief and
+asked it to help me do the capstone, and I had already made a new empty repo
+for it. What I got back was a question instead of code. It pointed out the
+brief says to use the same repo as the system you're extending ("not a copy,
+not a fresh repo"), and it recommended FitFindr with shape A, because
+`serve.py` was already there with the logging deliberately left out. What I
+changed: I dropped my new repo and did everything in this FitFindr repo
+instead, so the capstone sits on top of my unit 3 and 4 commits like the brief
+wants.
+
+**Moment 2: the five criteria.** The brief says not to have a model write
+your criteria. When I got to Milestone 4, Claude didn't write them at first.
+It gave me a table of what the log could measure and the numbers from my
+Milestone 3 session, and told me to write them myself. I asked it to write
+them anyway, so **the wording of the five capstone criteria in `criteria.md`
+is Claude's, not mine.** The targets come from my own log (the 5.7 second
+median, the 412 to 504 tokens per run, the wrong key coming back as a 200).
+Then it ran them through the brief's three self check questions, and that
+changed one: criterion 2 didn't say whether time spent waiting on the rate
+limiter counts, so it got a sentence saying it does and that trials are 60
+seconds apart. That sentence ended up mattering, because the rate limit is
+exactly what made the eighth query slow in every trial.
+
+One more thing about the order, since that's what the commit history is
+supposed to show. My criteria commit is `fb9afb7` and my first results commit
+is `9f753a6`. Their messages just say "unit 9 milestone 4" and "unit 9
+milestone 5" and don't name what's in them, which I should have done. I
+didn't reword them after pushing, because the brief says not to rewrite
+history.
 
 ---
 
