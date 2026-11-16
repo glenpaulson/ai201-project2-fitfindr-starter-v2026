@@ -47,6 +47,10 @@ def new_session(query: str, wardrobe: dict) -> dict:
         "outfit_suggestion": None,   # what suggest_outfit returned
         "fit_card": None,            # what create_fit_card returned
         "error": None,               # set when the run ended early
+        # UNIT 9: WHY it ended early, so serve.py doesn't have to read the
+        # sentence in "error" to find out. "no_results" is a fine answer,
+        # "model_unavailable" means something is broken.
+        "error_kind": None,
     }
 
 
@@ -195,6 +199,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                     f"I couldn't find anything for \"{query}\". Try removing the "
                     f"price limit, using a different size, or simpler keywords."
                 )
+                session["error_kind"] = "no_results"
                 trace.step(
                     "search_listings (via MCP)",
                     inputs=(
@@ -245,6 +250,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                     f"it, so there is no outfit or fit card. The model said: "
                     f"{exc} Once that is sorted, run the same query again."
                 )
+                session["error_kind"] = "model_unavailable"
                 trace.step(
                     "suggest_outfit",
                     inputs=f"item {item['id']}, wardrobe with {owned} items",
@@ -278,6 +284,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
                     f"{session['outfit_suggestion']} "
                     f"Run the same query again once the key is sorted."
                 )
+                session["error_kind"] = "model_unavailable"
                 trace.step(
                     "create_fit_card",
                     inputs=f"item {item['id']}, outfit of "

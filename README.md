@@ -1649,6 +1649,155 @@ Criterion 5, bad input. The five log lines, in the same order as the list in
 Every response to those five was a 400 with `"Send JSON with a 'query' field"`
 in the error, which `run_capstone.py` checked from the response body.
 
+**Verdicts and diagnosis**
+
+Against the targets I set in `criteria.md`:
+
+1. Criterion 1, one complete log line per request: **MET**, 16 of 16 in all
+   three trials.
+2. Criterion 2, under 8 seconds: **MET**, 9 of 10 in all three trials. It
+   passed, but only because I allowed two slow ones. More on that below.
+3. Criterion 3, 2 model calls and 1 to 600 tokens: **MET**, 10 of 10 in all
+   three trials. Tokens ran from 412 to 518.
+4. Criterion 4, wrong API key gets 500 or higher: **MISSED**, 0 of 3 in all
+   three trials. Every one came back 200.
+5. Criterion 5, bad input gets a 400 with no model calls: **MET**, 5 of 5 in
+   all three trials.
+
+**The miss, criterion 4.** All 9 wrong key requests (3 per trial) came back
+200, and their log lines all say `"outcome": "stopped"`, `"model_calls": 1`
+and 0 tokens. So the first model call got rejected and nothing after it ran.
+
+Where: the hand off between `agent.py::run_agent` and `serve.py::ask`.
+
+How: in the outfit stage, `run_agent` catches `ModelUnavailable` from
+`suggest_outfit`, writes a sentence into `session["error"]` ("I found Denim
+Jacket ... but I couldn't reach the model to style it ...") and returns the
+session like normal. `serve.py::ask` only gives a 500 when `run_agent` raises,
+and it never raises here, so it hands out a 200. The bigger problem is that
+"no matches" and "the model is down" reach `serve.py` exactly the same way, as
+an English sentence in the same `error` field. "No matches" is a correct
+answer and should be a 200. "The model is down" means the server is broken.
+`serve.py` has no way to tell which one it got without reading the sentence,
+so it treats them both the same and calls both of them `stopped` in the log.
+
+**Not a miss, but worth saying, criterion 2.** The slow request was the eighth
+test query (`cozy oversized hoodie`) in all three trials, at 30209, 29653 and
+28790 ms, while the other nine were all between 2.1 and 5.2 seconds. Where:
+`generate.py::_wait_for_slot`. How: it lets 15 model calls through per minute,
+which is the free tier limit, and every FitFindr answer needs 2 calls. The
+first seven queries use 14 calls in about 30 seconds, the eighth query's first
+call is number 15, and its second call has to wait about 27 seconds for the
+minute to roll over. The server printed
+`[rate limit] 15 requests used this minute. Waiting 27s.` right before it each
+time. So it isn't Gemini being slow, it's my own pacing, and it would happen to
+every eighth shopper if requests came in as fast as my test sends them.
+
+**Is it one problem or several?** The two things above aren't connected.
+Criterion 4 is about how a failure gets reported, and criterion 2 is about the
+free tier only fitting about 7 answers a minute.
+
+**Were my targets too low?** Three of them, yes, honestly:
+
+1. Criterion 2 only passed because I allowed 2 of 10 to be slow. If I tightened
+   it to 10 of 10 under 8 seconds it would miss in every trial, and it would
+   miss because of the rate limit, which is the real thing to know about this
+   system. That's the one I'd tighten.
+2. Criterion 3's 600 tokens was loose. The highest run was 518. 550 would
+   still pass every run I have and would catch something growing sooner.
+3. Criteria 1 and 5 can't really vary between trials, because there's no model
+   involved in either check. They passed the same way every time, which is
+   what they were supposed to show, but they were never likely to miss.
+
+I'm not changing any of these in `criteria.md`. They weren't broken, they
+were just easy, and the brief says only an unmeasurable criterion gets revised.
+
+**The Improvement**
+
+What I changed: when the model can't be reached, `serve.py` now answers 503
+instead of 200, and logs it as `"outcome": "model_error"` instead of
+`stopped`. It's one change in two places:
+
+1. `agent.py::run_agent` now says *why* it stopped. I added an `error_kind`
+   field to the session in `agent.py::new_session`. The empty search branch
+   sets it to `"no_results"`, and both `except ModelUnavailable` handlers
+   (the outfit one and the fit card one) set it to `"model_unavailable"`. The
+   sentence in `error` is exactly the same as before.
+2. `serve.py::ask` looks at `error_kind` instead of guessing from the
+   sentence. `"model_unavailable"` gets a 503 and the outcome `model_error`.
+   Any other stop (no matches) is still a 200 and `stopped`. The body is still
+   the whole session, so the caller still gets the sentence about the API key.
+   `error_kind` goes in the log line too.
+
+Why this and not something else: the diagnosis said the problem is that "no
+matches" and "model is down" arrive at `serve.py` looking exactly the same. So
+the fix is to make them look different at the source, in the agent, where the
+exception is actually caught, instead of having `serve.py` search the English
+sentence for "couldn't reach the model", which would break the first time
+someone reworded that message. I picked 503 (Service Unavailable) over a plain
+500 because nothing crashed. The server is up, it just can't get to the thing
+it depends on.
+
+I ran exactly the same test again with `python run_capstone.py after`, three
+trials, nothing else changed. Results are in
+`results/capstone_2026-11-15_1650_after.md` and
+`results/capstone_2026-11-15_1650_after_server.txt`.
+
+Before (`results/capstone_2026-11-15_1634_before.md`):
+
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. Every request leaves exactly one complete log line | 16 of 16 | 16/16 | 16/16 | 16/16 | MET |
+| 2. A matching query answers in under 8 seconds | 8 of 10 | 9/10 | 9/10 | 9/10 | MET |
+| 3. 2 model calls and 1 to 600 tokens per matching query | 10 of 10 | 10/10 | 10/10 | 10/10 | MET |
+| 4. Wrong API key gets 500 or higher, not 200 | 3 of 3 | 0/3 | 0/3 | 0/3 | MISSED |
+| 5. Bad input gets a 400 and uses no model calls | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+
+After (`results/capstone_2026-11-15_1650_after.md`):
+
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. Every request leaves exactly one complete log line | 16 of 16 | 16/16 | 16/16 | 16/16 | MET |
+| 2. A matching query answers in under 8 seconds | 8 of 10 | 9/10 | 9/10 | 9/10 | MET |
+| 3. 2 model calls and 1 to 600 tokens per matching query | 10 of 10 | 10/10 | 10/10 | 10/10 | MET |
+| 4. Wrong API key gets 500 or higher, not 200 | 3 of 3 | 3/3 | 3/3 | 3/3 | MET |
+| 5. Bad input gets a 400 and uses no model calls | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+
+Did it help: yes, for the thing it was aimed at. Criterion 4 went from 0 of 3
+to 3 of 3 in every trial. One of the after log lines for a wrong key:
+
+```
+{"timestamp": "2026-11-15T23:52:11+00:00", "request_id": "07aab18a", "route": "/ask", "query": "denim jacket under $50", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 1, "prompt_tokens": 0, "output_tokens": 0, "agent_ms": 3510, "parsed": {"description": "denim jacket", "size": null, "max_price": 50.0}, "num_results": 7, "selected_item_id": "lst_007", "selected_price": 42.0, "fit_card": null, "error": "I found Denim Jacket — Light Wash, Cropped for $42.0 on poshmark, but I couldn't reach the model to style it, so there is no outfit or fit card. The model said: The model rejected your API key. Check GEMINI_API_KEY in your .env file, or create a fresh key at aistudio.google.com. Once that is sorted, run the same query again.", "error_kind": "model_unavailable", "outcome": "model_error", "status_code": 503, "duration_ms": 3510}
+```
+
+And the no match query in the same trial still came back as a normal 200,
+which is what I wanted to keep:
+
+```
+{"timestamp": "2026-11-15T23:51:53+00:00", "request_id": "0d5d6ce1", "route": "/ask", "query": "designer ballgown size XXS under $5", "used_example_wardrobe": true, "waited_for_lock": false, "cache_enabled": false, "model_calls": 0, "prompt_tokens": 0, "output_tokens": 0, "agent_ms": 1121, "parsed": {"description": "designer ballgown", "size": "XXS", "max_price": 5.0}, "num_results": 0, "selected_item_id": null, "selected_price": null, "fit_card": null, "error": "I couldn't find anything for \"designer ballgown size XXS under $5\". Try removing the price limit, using a different size, or simpler keywords.", "error_kind": "no_results", "outcome": "stopped", "status_code": 200, "duration_ms": 1122}
+```
+
+Nothing else moved. Criteria 1, 3 and 5 are the same. Criterion 2 is 9 of 10
+again in all three trials, and it's the eighth query again every time (29175,
+29662 and 30154 ms), with the same rate limit wait printed 3 times in the
+server output. That's expected, since I didn't touch the rate limit. I also
+ran `python agent.py` and `python test.py` afterwards and both still work the
+same as before (10 passed), so the CLI didn't break.
+
+What it costs: anything that was treating every 200 as fine and reading
+`error` to find problems still works, because the body didn't change. But
+anything that was treating every non 200 as "the request was bad" will now
+see a 503 for a broken key. I think that's the right trade, because it was
+wrong before.
+
+One thing the after run showed me that I got wrong earlier: in the diagnosis I
+said a criterion 3 target of 550 tokens "would still pass every run I have".
+The highest before run was 518, but in the after run one query used 556 tokens
+(`silk slip dress in midi length under $40`, trial 2). So 550 would have been
+too tight. The token count moves more between runs than my first ten runs
+showed, because the model's outfit text goes into the fit card prompt and that
+text is different every time.
+
 ---
 
 📖 **How to run this project: [RUNNING.md](RUNNING.md)**

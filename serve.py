@@ -212,17 +212,26 @@ def ask():
     record["selected_price"] = item.get("price")
     record["fit_card"] = session.get("fit_card")
     record["error"] = session.get("error")
-    record["status_code"] = 200
-    # the agent still answers 200 when it stops early (like no matches),
-    # so I mark those differently so they don't look like a normal success
-    if session.get("error"):
+    record["error_kind"] = session.get("error_kind")
+    # UNIT 9 improvement: if the model couldn't be reached the server is
+    # broken, so say so with a 503 instead of a 200. The body is still the
+    # whole session, so the caller still gets the sentence explaining it.
+    # No matches is still a 200, because that's a real answer.
+    status = 200
+    if session.get("error_kind") == "model_unavailable":
+        status = 503
+        record["outcome"] = "model_error"
+    elif session.get("error"):
+        # the agent stopped early for a normal reason (like no matches),
+        # so mark it so it doesn't look like a normal success
         record["outcome"] = "stopped"
     else:
         record["outcome"] = "ok"
+    record["status_code"] = status
     record["duration_ms"] = round((time.perf_counter() - start) * 1000)
     log_request(record)
 
-    return _with_id(jsonify(session), request_id)
+    return _with_id(jsonify(session), request_id), status
 
 
 def _with_id(response, request_id):
